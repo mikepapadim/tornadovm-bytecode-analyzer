@@ -100,6 +100,9 @@ class TornadoVisualizer:
         bc_pattern = r"bc:\s+(\w+)\s+(.*?)$"
         global_op_index = sum(len(g.operations) for g in self.task_graphs)
         
+        # Track tasks in this graph
+        tasks = set()
+        
         for op_match in re.finditer(bc_pattern, section, re.MULTILINE):
             op_type = op_match.group(1)
             op_details = op_match.group(2)
@@ -107,6 +110,10 @@ class TornadoVisualizer:
             # Create and add the operation
             operation = self._parse_operation(op_type, op_details)
             task_graph.operations.append(operation)
+            
+            # Track task names from LAUNCH operations
+            if op_type == "LAUNCH" and operation.task_name:
+                tasks.add(operation.task_name)
             
             # Store bytecode details for visualization
             self.bytecode_details.append({
@@ -121,6 +128,9 @@ class TornadoVisualizer:
             
             # Track objects and tasks
             self._process_operation(operation, task_graph)
+        
+        # Add discovered tasks to the graph
+        task_graph.tasks = list(tasks) if tasks else [f"{graph_id}_main"]
             
         self.task_graphs.append(task_graph)
     
@@ -150,11 +160,10 @@ class TornadoVisualizer:
                     operation.event_list = int(event_match.group(1))
                     
         elif op_type == "LAUNCH":
-            # Extract task name
+            # Extract task name - modified to capture the full task name
             task_match = re.search(r"task ([\w\.]+) - ([\w\.]+) on", op_details)
             if task_match:
-                operation.task_name = f"{task_match.group(1)}.{task_match.group(2)}"
-                task_graph_name = task_match.group(1)
+                operation.task_name = task_match.group(1)  # Just use the main task name
                 
                 # Extract event list if present
                 event_match = re.search(r"\[event list=(\d+)\]", op_details)
@@ -1010,7 +1019,12 @@ def main():
         num_task_graphs = len(visualizer.task_graphs)
         total_objects = len(visualizer.memory_objects)
         total_bytecodes = len(visualizer.bytecode_details)
-        total_tasks = sum(len(graph.tasks) for graph in visualizer.task_graphs)
+        # Calculate total tasks by counting LAUNCH operations
+        total_tasks = sum(1 for bc in visualizer.bytecode_details 
+                         if bc["Operation"] == "LAUNCH" and bc["TaskName"])
+        # If no LAUNCH operations found, count task graph entries
+        if total_tasks == 0:
+            total_tasks = sum(len(graph.tasks) for graph in visualizer.task_graphs)
 
         # Calculate memory metrics
         total_allocated = sum(obj.size for obj in visualizer.memory_objects.values())
