@@ -197,8 +197,18 @@ class TornadoVisualizer:
         
         # Track objects
         for obj_ref in operation.objects:
-            obj_hash = self._extract_hash(obj_ref)
-            obj_type = self._extract_type(obj_ref)
+            # Extract hash and type directly from the reference
+            if ':' in obj_ref:
+                obj_type = obj_ref.split(':')[0]
+                obj_hash = self._extract_hash(obj_ref.split(':')[1])
+            else:
+                match = re.search(r"([\w\.]+)@([0-9a-f]+)", obj_ref)
+                if match:
+                    obj_type = match.group(1)
+                    obj_hash = match.group(2)
+                else:
+                    obj_type = "Unknown"
+                    obj_hash = self._extract_hash(obj_ref)
             
             if op_type == "ALLOC":
                 # Create or update memory object
@@ -249,6 +259,12 @@ class TornadoVisualizer:
             elif op_type == "LAUNCH" and operation.task_name:
                 # Track task
                 task_graph.tasks.append(operation.task_name)
+                
+        # Update bytecode details with formatted object references
+        if hasattr(self, 'bytecode_details') and self.bytecode_details:
+            last_bc = self.bytecode_details[-1]
+            if 'Objects' in last_bc:
+                last_bc['Objects'] = ", ".join(self._format_object_ref(obj) for obj in operation.objects)
     
     def _extract_hash(self, obj_ref: str) -> str:
         """Extract hash from object reference"""
@@ -256,9 +272,53 @@ class TornadoVisualizer:
         return match.group(1) if match else obj_ref
     
     def _extract_type(self, obj_ref: str) -> str:
-        """Extract type from object reference"""
+        """Extract type from object reference and simplify it"""
+        # Handle format with colon (e.g. rmsnorm:@hash)
+        if ':' in obj_ref:
+            return obj_ref.split(':')[0]
+            
+        # Handle format with @ (e.g. uk.ac.manchester.tornado.api.types.arrays.FloatArray@hash)
         match = re.search(r"([\w\.]+)@", obj_ref)
-        return match.group(1) if match else "Unknown"
+        if match:
+            # Get the full type name
+            full_type = match.group(1)
+            # If it has dots, process as package path
+            if '.' in full_type:
+                # Split by dots and get the last meaningful part
+                parts = full_type.split('.')
+                # Remove common prefixes like 'uk.ac.manchester.tornado'
+                meaningful_parts = [p for p in parts if p not in ['uk', 'ac', 'manchester', 'tornado', 'api', 'types']]
+                return meaningful_parts[-1] if meaningful_parts else "Unknown"
+            else:
+                # If no dots, just return the type as is
+                return full_type
+        
+        return "Unknown"
+    
+    def _format_object_ref(self, obj_ref: str) -> str:
+        """Format object reference to show only essential information"""
+        # Handle format with colon (e.g. rmsnorm:@hash)
+        if ':' in obj_ref:
+            parts = obj_ref.split(':')
+            type_name = parts[0]
+            hash_part = parts[1].replace('@', '')  # Remove any @ if present
+            return f"{type_name}@{hash_part[:8]}"
+            
+        # Handle format with @ (e.g. uk.ac.manchester.tornado.api.types.arrays.FloatArray@hash)
+        match = re.search(r"([\w\.]+)@([0-9a-f]+)", obj_ref)
+        if match:
+            full_type = match.group(1)
+            hash_part = match.group(2)
+            # If it has dots, process as package path
+            if '.' in full_type:
+                parts = full_type.split('.')
+                meaningful_parts = [p for p in parts if p not in ['uk', 'ac', 'manchester', 'tornado', 'api', 'types']]
+                type_name = meaningful_parts[-1] if meaningful_parts else full_type
+            else:
+                type_name = full_type
+            return f"{type_name}@{hash_part[:8]}"
+            
+        return obj_ref  # Return as is if no pattern matches
     
     def _build_dependencies(self) -> None:
         """Build dependencies between task graphs based on object usage"""
@@ -272,13 +332,22 @@ class TornadoVisualizer:
         # Create edges for dependencies
         for graph in self.task_graphs:
             for producer_graph, objects in graph.dependencies.items():
+                # Format object references for edge labels
+                formatted_objects = []
+                for obj_hash in objects:
+                    if obj_hash in self.memory_objects:
+                        obj = self.memory_objects[obj_hash]
+                        formatted_objects.append(f"{self._extract_type(obj.object_type)}@{obj_hash[:8]}")
+                    else:
+                        formatted_objects.append(f"Unknown@{obj_hash[:8]}")
+                
                 # Create a unique edge with objects as labels
                 self.dependency_graph.add_edge(
                     producer_graph, 
                     graph.graph_id, 
                     objects=objects,
-                    label='\n'.join([obj[:8] for obj in objects[:3]]) +  
-                          (f"\n+{len(objects)-3} more" if len(objects) > 3 else "")
+                    label='\n'.join(formatted_objects[:3]) +  
+                          (f"\n+{len(formatted_objects)-3} more" if len(formatted_objects) > 3 else "")
                 )
     
     def visualize_dependency_graph_detailed(self) -> Optional[plt.Figure]:
@@ -411,7 +480,7 @@ class TornadoVisualizer:
                         operations.append({
                             "TaskGraph": graph.graph_id,
                             "Operation": op.operation,
-                            "Object": obj_hash,
+                            "Object": f"{obj_type}@{obj_hash[:8]}",
                             "ObjectType": obj_type,
                             "Size": op.size if hasattr(op, 'size') else 0,
                             "OperationIndex": j,
@@ -457,7 +526,7 @@ class TornadoVisualizer:
                     name=op_type,
                     text=df_filtered.apply(
                         lambda row: f"<b>{row['Operation']}</b> in {row['TaskGraph']}<br>"
-                                   f"Object: {row['ObjectType']}@{row['Object']}<br>"
+                                   f"Object: {row['Object']}<br>"
                                    f"Size: {row['Size']:,} bytes" + 
                                    (f"<br>Status: {row['Status']}" if row['Status'] else ""),
                         axis=1
@@ -504,6 +573,8 @@ class TornadoVisualizer:
             return go.Figure()
             
         obj = self.memory_objects[selected_object]
+        obj_type = self._extract_type(obj.object_type)
+        short_id = f"{obj_type}@{obj.object_id[:8]}"
         
         # Prepare data
         events = []
@@ -606,7 +677,7 @@ class TornadoVisualizer:
         # Update layout
         fig.update_layout(
             title={
-                'text': f"Object Flow: {obj.object_type}@{obj.object_id}",
+                'text': f"Object Flow: {short_id}",
                 'y':0.9,
                 'x':0.5,
                 'xanchor': 'center',
@@ -652,46 +723,86 @@ class TornadoVisualizer:
             mem_transferred = sum(op.size for op in graph.operations 
                                 if op.operation.startswith("TRANSFER"))
             
-            # Get exact object dependencies
+            # Get exact object dependencies with simplified formatting
             dep_details = []
             for dep_graph, obj_hashes in graph.dependencies.items():
                 obj_details = []
                 for obj_hash in obj_hashes:
                     if obj_hash in self.memory_objects:
                         obj = self.memory_objects[obj_hash]
-                        obj_details.append(f"{obj.object_type}@{obj_hash}")
+                        # Format as TYPE@HASH
+                        if ':' in obj.object_type:
+                            type_name = obj.object_type.split(':')[0]
+                        elif '.' in obj.object_type:
+                            parts = obj.object_type.split('.')
+                            meaningful_parts = [p for p in parts if p not in ['uk', 'ac', 'manchester', 'tornado', 'api', 'types']]
+                            type_name = meaningful_parts[-1] if meaningful_parts else obj.object_type
+                        else:
+                            type_name = obj.object_type
+                        obj_details.append(f"{type_name}@{obj_hash[:8]}")
                 if obj_details:
                     dep_details.append(f"{dep_graph}: {', '.join(obj_details)}")
+
+            # Track operations per task
+            task_operations = defaultdict(list)
+            current_task = None
+            task_execution_order = []
             
-            # If no tasks are explicitly listed, create a default task entry
-            if not graph.tasks:
+            for op in graph.operations:
+                if op.operation == "LAUNCH" and op.task_name:
+                    current_task = op.task_name
+                    if current_task not in task_execution_order:
+                        task_execution_order.append(current_task)
+                if current_task:
+                    task_operations[current_task].append(op)
+                else:
+                    # Operations before first task are associated with graph setup
+                    task_operations[f"{graph.graph_id}_setup"].append(op)
+            
+            # If no explicit tasks found, create a default task
+            if not task_operations:
+                task_operations[f"{graph.graph_id}_main"] = graph.operations
+                task_execution_order = [f"{graph.graph_id}_main"]
+            elif f"{graph.graph_id}_setup" in task_operations:
+                task_execution_order.insert(0, f"{graph.graph_id}_setup")
+            
+            # Create entries for the graph and its tasks
+            # First, add the graph summary
+            task_data.append({
+                "TaskGraph": graph.graph_id,
+                "Task": f"📊 {graph.graph_id} (Total Operations: {len(graph.operations)})",
+                "Device": graph.device,
+                "Allocations": num_allocs,
+                "Deallocations": num_deallocs,
+                "PersistedObjects": num_persisted,
+                "TotalMemoryAllocated (MB)": f"{mem_allocated/(1024*1024):.2f}",
+                "TotalMemoryTransferred (MB)": f"{mem_transferred/(1024*1024):.2f}",
+                "Dependencies": "\n".join(dep_details) if dep_details else "None",
+                "NumOperations": len(graph.operations)
+            })
+            
+            # Then add each task with its operations
+            for task_name in task_execution_order:
+                ops = task_operations[task_name]
+                op_counts = defaultdict(int)
+                for op in ops:
+                    op_counts[op.operation] += 1
+                
+                # Format operation counts
+                op_summary = ", ".join(f"{op}: {count}" for op, count in op_counts.items())
+                
                 task_data.append({
                     "TaskGraph": graph.graph_id,
-                    "Task": f"{graph.graph_id}_main",
+                    "Task": f"↳ {task_name} ({len(ops)} ops)",
                     "Device": graph.device,
-                    "Allocations": num_allocs,
-                    "Deallocations": num_deallocs,
-                    "PersistedObjects": num_persisted,
-                    "TotalMemoryAllocated (MB)": f"{mem_allocated/(1024*1024):.2f}",
-                    "TotalMemoryTransferred (MB)": f"{mem_transferred/(1024*1024):.2f}",
-                    "Dependencies": "\n".join(dep_details) if dep_details else "None",
-                    "NumOperations": len(graph.operations)
+                    "Allocations": sum(1 for op in ops if op.operation == "ALLOC"),
+                    "Deallocations": sum(1 for op in ops if op.operation == "DEALLOC"),
+                    "PersistedObjects": sum(1 for op in ops if op.operation == "DEALLOC" and "Persisted" in op.status),
+                    "TotalMemoryAllocated (MB)": f"{sum(op.size for op in ops if op.operation == 'ALLOC')/(1024*1024):.2f}",
+                    "TotalMemoryTransferred (MB)": f"{sum(op.size for op in ops if op.operation.startswith('TRANSFER'))/(1024*1024):.2f}",
+                    "Dependencies": op_summary,
+                    "NumOperations": len(ops)
                 })
-            else:
-                # Create an entry for each task in the graph
-                for task_name in graph.tasks:
-                    task_data.append({
-                        "TaskGraph": graph.graph_id,
-                        "Task": task_name,
-                        "Device": graph.device,
-                        "Allocations": num_allocs,
-                        "Deallocations": num_deallocs,
-                        "PersistedObjects": num_persisted,
-                        "TotalMemoryAllocated (MB)": f"{mem_allocated/(1024*1024):.2f}",
-                        "TotalMemoryTransferred (MB)": f"{mem_transferred/(1024*1024):.2f}",
-                        "Dependencies": "\n".join(dep_details) if dep_details else "None",
-                        "NumOperations": len(graph.operations)
-                    })
         
         # Create DataFrame and ensure it's not empty
         df = pd.DataFrame(task_data)
@@ -1074,6 +1185,9 @@ def main():
             .stDataFrame {
                 width: 100% !important;
             }
+            .task-indent {
+                padding-left: 20px;
+            }
             </style>
             """, unsafe_allow_html=True)
             
@@ -1083,19 +1197,19 @@ def main():
                 column_config={
                     "Dependencies": st.column_config.TextColumn(
                         "Dependencies",
-                        help="Object dependencies between task graphs",
+                        help="For task graphs: object dependencies between graphs. For tasks: operation counts.",
                         max_chars=1000,
                         width="large"
                     ),
                     "Task": st.column_config.TextColumn(
                         "Task",
-                        help="Individual task name",
-                        width="medium"
+                        help="Task graph summary and individual tasks",
+                        width="large"
                     ),
                     "TaskGraph": st.column_config.TextColumn(
                         "TaskGraph",
                         help="Task graph identifier",
-                        width="medium"
+                        width="small"
                     ),
                     "Device": st.column_config.TextColumn(
                         "Device",
@@ -1104,7 +1218,7 @@ def main():
                     ),
                     "NumOperations": st.column_config.NumberColumn(
                         "Operations",
-                        help="Number of operations in the task graph",
+                        help="Number of operations in the task/graph",
                         format="%d"
                     ),
                     "TotalMemoryAllocated (MB)": st.column_config.NumberColumn(
@@ -1116,6 +1230,21 @@ def main():
                         "Memory Transferred (MB)",
                         help="Total memory transferred in MB",
                         format="%.2f"
+                    ),
+                    "Allocations": st.column_config.NumberColumn(
+                        "Allocs",
+                        help="Number of allocation operations",
+                        format="%d"
+                    ),
+                    "Deallocations": st.column_config.NumberColumn(
+                        "Deallocs",
+                        help="Number of deallocation operations",
+                        format="%d"
+                    ),
+                    "PersistedObjects": st.column_config.NumberColumn(
+                        "Persisted",
+                        help="Number of persisted objects",
+                        format="%d"
                     )
                 },
                 hide_index=True,
