@@ -1712,7 +1712,7 @@ def main():
                     if selected_object in visualizer.memory_objects:
                         obj = visualizer.memory_objects[selected_object]
                         st.markdown(f"**Type:** {obj.object_type}")
-                        st.markdown(f"**Size:** {obj.size:,} bytes")
+                        st.markdown(f"**Size:** {obj.size:,} bytes ({obj.size/1024/1024:.2f} MB)")
                         st.markdown(f"**Status:** {obj.current_status}")
                         st.markdown(f"**Allocated in:** {obj.allocated_in_graph}")
                 else:
