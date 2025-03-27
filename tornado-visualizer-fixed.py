@@ -405,7 +405,7 @@ class TornadoVisualizer:
             for j, op in enumerate(graph.operations):
                 if op.operation in ["ALLOC", "TRANSFER_HOST_TO_DEVICE_ONCE", "TRANSFER_HOST_TO_DEVICE_ALWAYS", 
                                   "TRANSFER_DEVICE_TO_HOST_ALWAYS", "DEALLOC", "ON_DEVICE", "ON_DEVICE_BUFFER"]:
-                    for obj_ref in operation.objects:
+                    for obj_ref in op.objects:
                         obj_hash = self._extract_hash(obj_ref)
                         obj_type = self._extract_type(obj_ref)
                         operations.append({
@@ -413,10 +413,10 @@ class TornadoVisualizer:
                             "Operation": op.operation,
                             "Object": obj_hash,
                             "ObjectType": obj_type,
-                            "Size": op.size,
+                            "Size": op.size if hasattr(op, 'size') else 0,
                             "OperationIndex": j,
                             "GlobalIndex": sum(len(g.operations) for g in self.task_graphs[:i]) + j,
-                            "Status": op.status if op.operation == "DEALLOC" else ""
+                            "Status": op.status if hasattr(op, 'status') else ""
                         })
         
         df = pd.DataFrame(operations)
@@ -479,6 +479,17 @@ class TornadoVisualizer:
             yaxis_title="Memory Objects",
             height=600,
             template="plotly_white",
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='white'),
+            xaxis=dict(
+                gridcolor='rgba(128,128,128,0.2)',
+                zerolinecolor='rgba(128,128,128,0.2)',
+            ),
+            yaxis=dict(
+                gridcolor='rgba(128,128,128,0.2)',
+                zerolinecolor='rgba(128,128,128,0.2)',
+            ),
         )
         
         return fig
@@ -1261,47 +1272,84 @@ def main():
         elif page == "Bytecode Details":
             st.header("Bytecode Analysis")
             
-            # Bytecode distribution
-            col1, col2 = st.columns(2)
+            # Use full width container
+            st.markdown("""
+            <style>
+            .block-container {
+                padding-top: 1rem;
+                padding-bottom: 0rem;
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+            .stDataFrame {
+                width: 100% !important;
+            }
+            .dataframe-container {
+                margin-top: 1rem;
+                margin-bottom: 2rem;
+            }
+            </style>
+            """, unsafe_allow_html=True)
             
-            with col1:
-                st.subheader("Bytecode Distribution")
-                bc_chart = visualizer.get_bytecode_distribution_chart()
-                st.plotly_chart(bc_chart, use_container_width=True)
+            # Operations by Task Graph - make it wider and more readable
+            st.subheader("Operations by Task Graph")
             
-            with col2:
-                # Calculate operation counts by task graph
-                if visualizer.bytecode_details:
-                    bc_by_graph = defaultdict(lambda: defaultdict(int))
-                    for bc in visualizer.bytecode_details:
-                        bc_by_graph[bc["TaskGraph"]][bc["Operation"]] += 1
+            # Create pivot table for operations
+            if visualizer.bytecode_details:
+                bc_by_graph = defaultdict(lambda: defaultdict(int))
+                for bc in visualizer.bytecode_details:
+                    bc_by_graph[bc["TaskGraph"]][bc["Operation"]] += 1
+                
+                # Create heatmap data
+                graph_ops = []
+                for graph, ops in bc_by_graph.items():
+                    for op, count in ops.items():
+                        graph_ops.append({"TaskGraph": graph, "Operation": op, "Count": count})
+                
+                graph_ops_df = pd.DataFrame(graph_ops)
+                
+                if not graph_ops_df.empty:
+                    # Create a pivot table with better formatting
+                    pivot_df = graph_ops_df.pivot_table(
+                        index="TaskGraph", 
+                        columns="Operation", 
+                        values="Count",
+                        aggfunc='sum',
+                        fill_value=0
+                    )
                     
-                    # Create heatmap data
-                    graph_ops = []
-                    for graph, ops in bc_by_graph.items():
-                        for op, count in ops.items():
-                            graph_ops.append({"TaskGraph": graph, "Operation": op, "Count": count})
+                    # Reorder columns in a logical sequence
+                    preferred_order = [
+                        "ALLOC", "ON_DEVICE", "ON_DEVICE_BUFFER",
+                        "TRANSFER_HOST_TO_DEVICE", "TRANSFER_HOST_TO_DEVICE_ONCE", "TRANSFER_HOST_TO_DEVICE_ALWAYS",
+                        "TRANSFER_DEVICE_TO_HOST", "TRANSFER_DEVICE_TO_HOST_ALWAYS",
+                        "LAUNCH", "BARRIER", "DEALLOC"
+                    ]
                     
-                    graph_ops_df = pd.DataFrame(graph_ops)
+                    # Reorder columns while keeping any additional columns at the end
+                    ordered_cols = [col for col in preferred_order if col in pivot_df.columns]
+                    remaining_cols = [col for col in pivot_df.columns if col not in preferred_order]
+                    pivot_df = pivot_df[ordered_cols + remaining_cols]
                     
-                    if not graph_ops_df.empty:
-                        st.subheader("Operations by Task Graph")
-                        # Create a simple table instead of heatmap
-                        pivot_df = graph_ops_df.pivot_table(
-                            index="TaskGraph", 
-                            columns="Operation", 
-                            values="Count",
-                            aggfunc='sum',
-                            fill_value=0
-                        )
-                        st.dataframe(pivot_df)
+                    # Display the pivot table with custom formatting
+                    st.dataframe(
+                        pivot_df,
+                        column_config={
+                            col: st.column_config.NumberColumn(
+                                col,
+                                help=f"Number of {col} operations",
+                                format="%d"
+                            ) for col in pivot_df.columns
+                        },
+                        use_container_width=True
+                    )
             
             # Bytecode listing with filters
             st.subheader("Bytecode Listing")
             
             if visualizer.bytecode_details:
-                # Filters
-                col1, col2, col3 = st.columns(3)
+                # Filters in a single row
+                col1, col2, col3 = st.columns([1, 1, 2])
                 with col1:
                     graph_filter = st.multiselect(
                         "Filter by Task Graph",
@@ -1324,10 +1372,46 @@ def main():
                 if search_term:
                     filtered_bc = [bc for bc in filtered_bc if search_term.lower() in bc.get("Objects", "").lower()]
                 
-                # Display filtered data
+                # Display filtered data with improved formatting
                 bc_df = pd.DataFrame(filtered_bc)
                 if not bc_df.empty:
-                    st.dataframe(bc_df)
+                    st.dataframe(
+                        bc_df,
+                        column_config={
+                            "TaskGraph": st.column_config.TextColumn(
+                                "TaskGraph",
+                                help="Task graph identifier",
+                                width="medium"
+                            ),
+                            "Operation": st.column_config.TextColumn(
+                                "Operation",
+                                help="Bytecode operation type",
+                                width="medium"
+                            ),
+                            "Details": st.column_config.TextColumn(
+                                "Details",
+                                help="Operation details",
+                                width="large"
+                            ),
+                            "Objects": st.column_config.TextColumn(
+                                "Objects",
+                                help="Objects involved in the operation",
+                                width="large"
+                            ),
+                            "TaskName": st.column_config.TextColumn(
+                                "TaskName",
+                                help="Name of the task",
+                                width="medium"
+                            ),
+                            "GlobalIndex": st.column_config.NumberColumn(
+                                "Index",
+                                help="Global operation index",
+                                format="%d"
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
                 else:
                     st.info("No bytecodes match the selected filters")
             else:
