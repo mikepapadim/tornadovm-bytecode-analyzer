@@ -10,6 +10,7 @@ import pandas as pd
 from collections import defaultdict
 import io
 import base64
+import graphviz
 
 # Set page configuration
 st.set_page_config(
@@ -199,16 +200,39 @@ class TornadoVisualizer:
         for obj_ref in operation.objects:
             # Extract hash and type directly from the reference
             if ':' in obj_ref:
+                # Handle format like "rmsnorm:@hash"
                 obj_type = obj_ref.split(':')[0]
-                obj_hash = self._extract_hash(obj_ref.split(':')[1])
+                obj_hash = self._extract_hash(obj_ref)
             else:
+                # Handle format like "uk.ac.manchester.tornado.api.types.arrays.FloatArray@hash"
                 match = re.search(r"([\w\.]+)@([0-9a-f]+)", obj_ref)
                 if match:
-                    obj_type = match.group(1)
+                    full_type = match.group(1)
                     obj_hash = match.group(2)
+                    # Extract meaningful type name
+                    if '.' in full_type:
+                        parts = full_type.split('.')
+                        # Keep only meaningful parts of the package path
+                        meaningful_parts = [p for p in parts if p not in ['uk', 'ac', 'manchester', 'tornado', 'api', 'types', 'arrays']]
+                        obj_type = meaningful_parts[-1] if meaningful_parts else parts[-1]
+                    else:
+                        obj_type = full_type
                 else:
-                    obj_type = "Unknown"
-                    obj_hash = self._extract_hash(obj_ref)
+                    # Try to extract hash from Object Hash Code format
+                    hash_match = re.search(r"Object Hash Code=0x([0-9a-f]+)", obj_ref)
+                    if hash_match:
+                        obj_hash = hash_match.group(1)
+                        # Try to find type in the rest of the string
+                        type_match = re.search(r"([\w\.]+)\s+on\s+", obj_ref)
+                        obj_type = type_match.group(1) if type_match else "FloatArray"
+                    else:
+                        # Last resort - try to find any type-like string
+                        type_match = re.search(r"([\w\.]+)\s*[@:]", obj_ref)
+                        obj_type = type_match.group(1) if type_match else "Unknown"
+                        obj_hash = self._extract_hash(obj_ref)
+            
+            # Clean up the type name
+            obj_type = obj_type.split('.')[-1]  # Take last part if it's a package path
             
             if op_type == "ALLOC":
                 # Create or update memory object
@@ -272,28 +296,24 @@ class TornadoVisualizer:
         return match.group(1) if match else obj_ref
     
     def _extract_type(self, obj_ref: str) -> str:
-        """Extract type from object reference and simplify it"""
+        """Extract meaningful type name from object reference"""
         # Handle format with colon (e.g. rmsnorm:@hash)
         if ':' in obj_ref:
             return obj_ref.split(':')[0]
             
-        # Handle format with @ (e.g. uk.ac.manchester.tornado.api.types.arrays.FloatArray@hash)
-        match = re.search(r"([\w\.]+)@", obj_ref)
+        # Look for the pattern *types.
+        type_match = re.search(r'types\.([\w\.]+)@', obj_ref)
+        if type_match:
+            return type_match.group(1)
+            
+        # Handle KernelContext and other patterns
+        match = re.search(r'\.(\w+)@', obj_ref)
         if match:
-            # Get the full type name
-            full_type = match.group(1)
-            # If it has dots, process as package path
-            if '.' in full_type:
-                # Split by dots and get the last meaningful part
-                parts = full_type.split('.')
-                # Remove common prefixes like 'uk.ac.manchester.tornado'
-                meaningful_parts = [p for p in parts if p not in ['uk', 'ac', 'manchester', 'tornado', 'api', 'types']]
-                return meaningful_parts[-1] if meaningful_parts else "Unknown"
-            else:
-                # If no dots, just return the type as is
-                return full_type
-        
-        return "Unknown"
+            # Get the last component before the @
+            return match.group(1)
+            
+        # If nothing else matches, return the original reference
+        return obj_ref
     
     def _format_object_ref(self, obj_ref: str) -> str:
         """Format object reference to show only essential information"""
@@ -337,129 +357,242 @@ class TornadoVisualizer:
                 for obj_hash in objects:
                     if obj_hash in self.memory_objects:
                         obj = self.memory_objects[obj_hash]
-                        formatted_objects.append(f"{self._extract_type(obj.object_type)}@{obj_hash[:8]}")
+                        formatted_objects.append(f"{self._extract_type(obj.object_type)}@{obj_hash[:6]}")
                     else:
-                        formatted_objects.append(f"Unknown@{obj_hash[:8]}")
+                        formatted_objects.append(f"Unknown@{obj_hash[:6]}")
                 
                 # Create a unique edge with objects as labels
                 self.dependency_graph.add_edge(
                     producer_graph, 
                     graph.graph_id, 
                     objects=objects,
-                    label='\n'.join(formatted_objects[:3]) +  
-                          (f"\n+{len(formatted_objects)-3} more" if len(formatted_objects) > 3 else "")
+                    label='\n'.join(sorted(formatted_objects))
                 )
     
-    def visualize_dependency_graph_detailed(self) -> Optional[plt.Figure]:
-        """Visualize the task graph dependencies with detailed bytecode information"""
-        if not self.task_graphs:
-            return None
-            
-        fig, ax = plt.subplots(figsize=(14, 10))
-        
+    def visualize_dependency_graph_detailed(self) -> None:
+        """Visualize task dependencies as a directed graph"""
         try:
-            # Use a hierarchical layout for better flow visualization
-            pos = nx.spring_layout(self.dependency_graph)  # Fallback to spring layout
+            # Create a new Graphviz graph
+            dot = graphviz.Digraph(
+                comment='Task Dependencies',
+                format='svg',
+                engine='dot'
+            )
             
-            # Draw nodes with custom appearance
-            node_sizes = [3000 + (self.dependency_graph.nodes[n].get('num_operations', 0) * 100) 
-                         for n in self.dependency_graph.nodes()]
+            # Set graph attributes for more compact visualization
+            dot.attr(
+                rankdir='TB',  # Top to bottom layout
+                splines='ortho',  # Orthogonal lines
+                nodesep='0.35',  # Node separation
+                ranksep='0.4',  # Rank separation
+                size='5,4',  # Size
+                ratio='compress',  # Compress to fit
+                bgcolor='transparent'
+            )
             
-            # Create a colormap for nodes
-            node_colors = []
-            for i, n in enumerate(self.dependency_graph.nodes()):
-                # Use different colors for different task graphs
-                color = plt.cm.tab10(i % 10)
-                # Make it semi-transparent
-                node_colors.append(color)
+            # Set default node attributes
+            dot.attr('node', 
+                    shape='box',
+                    style='filled',
+                    fillcolor='#1e1e1e',
+                    color='#666666',
+                    fontcolor='white',
+                    fontname='Arial',
+                    fontsize='10',
+                    margin='0.15',
+                    height='0.4',
+                    width='1.8')
             
-            # Draw nodes
-            nx.draw_networkx_nodes(self.dependency_graph, pos, node_size=node_sizes, 
-                                  node_color=node_colors, alpha=0.8, ax=ax)
+            # Set default edge attributes
+            dot.attr('edge',
+                    color='#666666',
+                    fontcolor='white',
+                    fontname='Arial',
+                    fontsize='9',
+                    penwidth='0.7')
             
-            # Draw edges with custom appearance
-            edge_colors = []
-            edge_widths = []
-            edge_styles = []
+            # Add nodes for each task graph
+            for graph in self.task_graphs:
+                # Create node label
+                op_counts = defaultdict(int)
+                for op in graph.operations:
+                    op_counts[op.operation] += 1
+                
+                # Format the label
+                label = f"{graph.graph_id}\\n{sum(op_counts.values())} ops"
+                
+                # Add node
+                dot.node(graph.graph_id, label)
             
-            for u, v, data in self.dependency_graph.edges(data=True):
-                # Edge color based on object type
-                num_objs = len(data.get('objects', []))
-                edge_colors.append('darkorange' if num_objs > 0 else 'gray')
-                edge_widths.append(1 + min(num_objs, 5))  # Thicker for more objects
-                edge_styles.append('solid')
+            # Add edges for dependencies
+            for graph in self.task_graphs:
+                for dep_graph_id, objects in graph.dependencies.items():
+                    if objects:
+                        # Get object names and types
+                        obj_details = []
+                        for obj_hash in objects:
+                            if obj_hash in self.memory_objects:
+                                obj = self.memory_objects[obj_hash]
+                                # Extract type using the new pattern
+                                obj_type = self._extract_type(obj.object_type)
+                                # Format as TYPE@HASH
+                                obj_details.append(f"{obj_type}@{obj_hash[:6]}")
+                        
+                        # Always show all objects, sorted
+                        edge_label = '\\n'.join(sorted(obj_details)) if obj_details else obj_hash[:6]
+                        
+                        # Add edge with all object names
+                        dot.edge(dep_graph_id, graph.graph_id, edge_label)
             
-            nx.draw_networkx_edges(self.dependency_graph, pos, edge_color=edge_colors, 
-                                  width=edge_widths, style=edge_styles, 
-                                  arrowsize=20, arrowstyle='->', ax=ax)
+            # Add custom CSS for container
+            st.markdown("""
+            <style>
+            .graph-container {
+                background: #0e1117;
+                border-radius: 10px;
+                padding: 12px;
+                margin: 8px 0;
+            }
+            .graph-container svg {
+                width: 100%;
+                height: auto;
+                min-height: 350px;
+                max-height: 600px;
+            }
+            </style>
+            """, unsafe_allow_html=True)
             
-            # Add node labels
-            node_labels = {n: self.dependency_graph.nodes[n].get('label', n) for n in self.dependency_graph.nodes()}
-            nx.draw_networkx_labels(self.dependency_graph, pos, labels=node_labels, 
-                                   font_size=12, font_weight='bold', ax=ax)
+            # Create container with column layout
+            st.markdown('<div class="graph-container">', unsafe_allow_html=True)
+            col1 = st.columns([3])[0]
+            with col1:
+                st.graphviz_chart(dot)
+            st.markdown('</div>', unsafe_allow_html=True)
             
-            # Add edge labels showing which objects are passed between graphs
-            edge_labels = {(u, v): data.get('label', '') for u, v, data in self.dependency_graph.edges(data=True)}
-            nx.draw_networkx_edge_labels(self.dependency_graph, pos, edge_labels=edge_labels, 
-                                        font_size=9, ax=ax)
+            # Add summary metrics
+            col1, col2, col3 = st.columns([1,1,1])
+            with col1:
+                st.metric('Graphs', len(self.task_graphs))
+            with col2:
+                st.metric('Deps', sum(len(g.dependencies) for g in self.task_graphs))
+            with col3:
+                st.metric('Ops', sum(len(g.operations) for g in self.task_graphs))
             
-            # Add bytecode details for each task graph as a text box
-            for i, graph in enumerate(self.task_graphs):
-                if graph.graph_id in pos:
-                    x, y = pos[graph.graph_id]
-                    text_x = x + 0.2  # Adjust position
-                    
-                    # Create a text with bytecode operations summary
-                    op_counts = defaultdict(int)
-                    for op in graph.operations:
-                        op_counts[op.operation] += 1
-                    
-                    bytecode_text = f"Bytecodes:\n"
-                    for op, count in op_counts.items():
-                        bytecode_text += f"{op}: {count}\n"
-                    
-                    # Add text box with bytecode summary
-                    props = dict(boxstyle='round', facecolor='white', alpha=0.7)
-                    ax.text(text_x, y, bytecode_text, fontsize=8,
-                            verticalalignment='center', bbox=props)
-            
-            plt.title("Task Graph Dependencies with Bytecode Information", fontsize=16)
-            plt.axis("off")
-            return fig
         except Exception as e:
             st.error(f"Error generating dependency graph: {e}")
-            return None
+            st.info("Please check that the task graphs contain valid data")
     
     def visualize_simple_dependency_graph(self) -> Optional[plt.Figure]:
         """Creates a simpler dependency graph visualization"""
         if not self.task_graphs:
             return None
             
-        fig, ax = plt.subplots(figsize=(10, 8))
+        # Create a new graph with init and end nodes
+        viz_graph = nx.DiGraph()
+        
+        # Add all nodes from original graph
+        for node in self.dependency_graph.nodes():
+            viz_graph.add_node(node)
+            
+        # Add all edges from original graph
+        for edge in self.dependency_graph.edges():
+            viz_graph.add_edge(edge[0], edge[1])
+            
+        # Find start and end nodes
+        start_nodes = [n for n in viz_graph.nodes() if viz_graph.in_degree(n) == 0]
+        end_nodes = [n for n in viz_graph.nodes() if viz_graph.out_degree(n) == 0]
+        
+        # Add Init and End nodes
+        if start_nodes:
+            viz_graph.add_node("Init")
+            for node in start_nodes:
+                viz_graph.add_edge("Init", node)
+                
+        if end_nodes:
+            viz_graph.add_node("End")
+            for node in end_nodes:
+                viz_graph.add_edge(node, "End")
+        
+        # Set style for better visualization
+        plt.style.use('dark_background')
+        # Adjust figure size based on number of nodes
+        num_nodes = len(viz_graph.nodes())
+        width = max(5, min(8, 5 + (num_nodes - 5) * 0.5))  # Scale width with nodes
+        height = max(4, min(6, 4 + (num_nodes - 5) * 0.3))  # Scale height with nodes
+        fig, ax = plt.subplots(figsize=(width, height))
+        fig.patch.set_facecolor('#0e1117')
+        ax.set_facecolor('#0e1117')
         
         try:
-            # Simple layout
-            pos = nx.spring_layout(self.dependency_graph, seed=42)
+            # Use different layout algorithms based on graph size and structure
+            if num_nodes <= 5:
+                pos = nx.spring_layout(viz_graph, k=2.0, iterations=50, seed=42)
+            else:
+                # Try kamada_kawai_layout for better node distribution
+                try:
+                    pos = nx.kamada_kawai_layout(viz_graph, scale=2.0)
+                except:
+                    # Fallback to spring layout with more iterations and stronger repulsion
+                    pos = nx.spring_layout(viz_graph, k=2.0, iterations=50, seed=42)
             
-            # Draw nodes
-            nx.draw_networkx_nodes(self.dependency_graph, pos, 
-                                  node_size=2000, 
-                                  node_color='skyblue', 
+            # Scale positions to prevent nodes from going outside the plot
+            pos = {node: (x * 0.8, y * 0.8) for node, (x, y) in pos.items()}
+            
+            # Draw regular nodes
+            regular_nodes = [n for n in viz_graph.nodes() if n not in ["Init", "End"]]
+            nx.draw_networkx_nodes(viz_graph, pos, 
+                                  nodelist=regular_nodes,
+                                  node_size=900,  # Slightly smaller nodes
+                                  node_color='#648FFF',  # IBM colorblind-safe blue
+                                  alpha=0.9,
+                                  edgecolors='white',
+                                  linewidths=0.5,
                                   ax=ax)
             
-            # Draw edges
-            nx.draw_networkx_edges(self.dependency_graph, pos, 
-                                  width=2, 
-                                  edge_color='gray',
-                                  arrowsize=20, 
-                                  arrowstyle='->', 
+            # Draw Init and End nodes with different style
+            init_end_nodes = [n for n in viz_graph.nodes() if n in ["Init", "End"]]
+            if init_end_nodes:
+                nx.draw_networkx_nodes(viz_graph, pos,
+                                      nodelist=init_end_nodes,
+                                      node_size=700,  # Slightly smaller special nodes
+                                      node_color='#DC267F',  # IBM colorblind-safe magenta
+                                      alpha=0.9,
+                                      edgecolors='white',
+                                      linewidths=0.5,
+                                      ax=ax)
+            
+            # Draw edges with bolder styling
+            nx.draw_networkx_edges(viz_graph, pos, 
+                                  width=1.2,
+                                  edge_color='#785EF0',  # IBM colorblind-safe purple
+                                  alpha=0.8,
+                                  arrowsize=15,
+                                  arrowstyle='-|>',
+                                  connectionstyle='arc3,rad=0.2',  # More curved edges
+                                  min_target_margin=25,  # Increased margin
+                                  min_source_margin=25,  # Increased margin
                                   ax=ax)
             
-            # Add labels
-            nx.draw_networkx_labels(self.dependency_graph, pos, font_size=12, ax=ax)
+            # Add labels with even smaller font
+            nx.draw_networkx_labels(viz_graph, pos, 
+                                   font_size=6,
+                                   font_family='monospace',
+                                   font_weight='bold',
+                                   font_color='white',
+                                   bbox=dict(facecolor='#0e1117', 
+                                           edgecolor='none', 
+                                           alpha=0.7,
+                                           pad=0.2),
+                                   ax=ax)
             
-            plt.title("Task Graph Dependencies", fontsize=16)
+            plt.title("")
             plt.axis("off")
+            
+            # Add more padding around the plot
+            plt.tight_layout(pad=0.8)  # More padding
+            # Increase margins for better spacing
+            ax.margins(x=0.25, y=0.25)
+            
             return fig
         except Exception as e:
             st.error(f"Error generating simple dependency graph: {e}")
@@ -703,7 +836,13 @@ class TornadoVisualizer:
     
     def get_detailed_bytecode_view(self) -> pd.DataFrame:
         """Get a detailed view of all bytecode operations"""
-        return pd.DataFrame(self.bytecode_details)
+        # Create DataFrame
+        df = pd.DataFrame(self.bytecode_details)
+        
+        # Reorder columns to put TaskName third and Details last
+        desired_order = ['TaskGraph', 'Operation', 'TaskName', 'Objects', 'GlobalIndex', 'Details']
+        df = df[desired_order]
+        return df
     
     def generate_task_summary(self) -> pd.DataFrame:
         """Generate a summary of tasks and memory operations"""
@@ -739,9 +878,9 @@ class TornadoVisualizer:
                             type_name = meaningful_parts[-1] if meaningful_parts else obj.object_type
                         else:
                             type_name = obj.object_type
-                        obj_details.append(f"{type_name}@{obj_hash[:8]}")
+                        obj_details.append(f"{type_name}@{obj_hash}")
                 if obj_details:
-                    dep_details.append(f"{dep_graph}: {', '.join(obj_details)}")
+                    dep_details.append(f"{', '.join(obj_details)}")
 
             # Track operations per task
             task_operations = defaultdict(list)
@@ -1051,6 +1190,104 @@ class TornadoVisualizer:
         
         return fig
 
+    def visualize_mermaid_graph(self) -> None:
+        """Display the Mermaid graph using Streamlit"""
+        try:
+            # Build the Mermaid graph definition
+            mermaid_def = [
+                "graph TD",
+                "    %% Style definitions",
+                "    classDef alloc fill:#22c55e,stroke:#333,stroke-width:2px",
+                "    classDef transfer fill:#3b82f6,stroke:#333,stroke-width:2px",
+                "    classDef launch fill:#f472b6,stroke:#333,stroke-width:2px",
+                "    classDef device fill:#666666,stroke:#333,stroke-width:2px"
+            ]
+            
+            # Process each task graph
+            for graph in self.task_graphs:
+                # Group operations by type
+                op_groups = defaultdict(list)
+                for op in graph.operations:
+                    op_groups[op.operation].append(op)
+                
+                # Create subgraph
+                graph_id = graph.graph_id.replace(" ", "_").replace("-", "_")
+                mermaid_def.append(f"    subgraph {graph_id}")
+                
+                # Track nodes for dependencies
+                prev_node = None
+                first_node = None
+                last_node = None
+                
+                # Add nodes for each operation group
+                for op_type, ops in op_groups.items():
+                    node_id = f"{graph_id}_{op_type}".replace(".", "_")
+                    count = len(ops)
+                    total_size = sum(op.size for op in ops if hasattr(op, 'size'))
+                    
+                    # Create node label
+                    if total_size > 0:
+                        label = f"{op_type}\\n{count} ops\\n{total_size/(1024*1024):.2f}MB"
+                    else:
+                        label = f"{op_type}\\n{count} ops"
+                    
+                    # Add node
+                    mermaid_def.append(f"        {node_id}[{label}]")
+                    
+                    # Apply style
+                    style_class = "device"
+                    if op_type in ["ALLOC", "DEALLOC"]:
+                        style_class = "alloc"
+                    elif op_type.startswith("TRANSFER"):
+                        style_class = "transfer"
+                    elif op_type == "LAUNCH":
+                        style_class = "launch"
+                    mermaid_def.append(f"        class {node_id} {style_class}")
+                    
+                    # Connect to previous node
+                    if prev_node:
+                        mermaid_def.append(f"        {prev_node} --> {node_id}")
+                    else:
+                        first_node = node_id
+                    
+                    prev_node = node_id
+                    last_node = node_id
+                
+                mermaid_def.append("    end")
+                
+                # Store nodes for dependencies
+                if first_node and last_node:
+                    graph.first_node = first_node
+                    graph.last_node = last_node
+            
+            # Add dependencies between graphs
+            for graph in self.task_graphs:
+                for dep_graph_id, objects in graph.dependencies.items():
+                    if objects:
+                        src_graph = next((g for g in self.task_graphs if g.graph_id == dep_graph_id), None)
+                        if src_graph and hasattr(src_graph, 'last_node') and hasattr(graph, 'first_node'):
+                            # Calculate total size
+                            total_size = sum(
+                                self.memory_objects[obj_hash].size 
+                                for obj_hash in objects 
+                                if obj_hash in self.memory_objects
+                            )
+                            
+                            # Create edge label
+                            label = f"{len(objects)} objects\\n{total_size/(1024*1024):.2f}MB"
+                            mermaid_def.append(f"    {src_graph.last_node} -->|{label}| {graph.first_node}")
+            
+            # Join the definition
+            mermaid_code = "\n".join(mermaid_def)
+            
+            # Use Streamlit's native mermaid support
+            st.write("Task Graph Flow")
+            st.code(mermaid_code, language="mermaid")
+            
+        except Exception as e:
+            st.error(f"Error generating graph: {str(e)}")
+            st.info("Please check that the task graphs contain valid data")
+
 # Main Streamlit application
 def main():
     # Apply custom CSS for dark theme
@@ -1092,14 +1329,19 @@ def main():
     # Sidebar for navigation and file upload
     with st.sidebar:
         st.header("Upload Data")
-        uploaded_file = st.file_uploader("Upload TornadoVM bytecode log", type=["txt", "log"])
+        uploaded_file = st.file_uploader(
+            "Upload TornadoVM bytecode log",
+            type=["txt", "log"],
+            key="tornado_log_uploader"  # Add unique key
+        )
         
         if uploaded_file:
             st.success(f"File uploaded: {uploaded_file.name}")
             page = st.radio(
                 "Select View:",
                 ["Basic Overview", "Task Graphs", "Memory Analysis", "Bytecode Details"],
-                index=0
+                index=0,
+                key="page_selector"  # Add unique key
             )
         else:
             st.info("Please upload a TornadoVM bytecode log to begin")
@@ -1251,14 +1493,6 @@ def main():
                 use_container_width=True
             )
             
-            # Simple dependency graph
-            st.subheader("Task Graph Dependencies")
-            simple_graph = visualizer.visualize_simple_dependency_graph()
-            if simple_graph:
-                st.pyplot(simple_graph)
-            else:
-                st.info("No task graph dependencies to display")
-                
             # Basic charts in two columns
             col1, col2 = st.columns(2)
             
@@ -1271,17 +1505,37 @@ def main():
                 st.subheader("Bytecode Distribution")
                 bc_chart = visualizer.get_bytecode_distribution_chart()
                 st.plotly_chart(bc_chart, use_container_width=True)
+            
+            # Add some space before the dependency graph
+            st.write("")
+            st.write("")
+            
+            # Simple dependency graph at the bottom
+            st.markdown("##### Task Graph Dependencies")  # Smaller header
+            simple_graph = visualizer.visualize_simple_dependency_graph()
+            if simple_graph:
+                # Add CSS to center the graph
+                st.markdown("""
+                <style>
+                .simple-graph-container {
+                    display: flex;
+                    justify-content: center;
+                    margin-top: -20px;  /* Reduce top margin */
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                st.markdown('<div class="simple-graph-container">', unsafe_allow_html=True)
+                st.pyplot(simple_graph)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.info("No task graph dependencies to display")
         
         elif page == "Task Graphs":
             st.header("Task Graph Analysis")
             
             # Detailed dependency visualization
             st.subheader("Task Graph Dependencies")
-            detailed_graph = visualizer.visualize_dependency_graph_detailed()
-            if detailed_graph:
-                st.pyplot(detailed_graph)
-            else:
-                st.info("No task graph dependencies to display")
+            visualizer.visualize_dependency_graph_detailed()
             
             # Task details
             st.subheader("Task Details")
@@ -1308,11 +1562,31 @@ def main():
                             st.markdown(f"- {task}")
                     
                     with col2:
-                        # Show dependencies
+                        # Show dependencies with object details
                         st.markdown("**Dependencies:**")
                         if selected.dependencies:
                             for dep, objs in selected.dependencies.items():
-                                st.markdown(f"- {dep} ({len(objs)} objects)")
+                                # Create expandable section for each dependency
+                                with st.expander(f"{dep} ({len(objs)} objects)"):
+                                    # Group objects by type
+                                    obj_by_type = {}
+                                    for obj_hash in objs:
+                                        if obj_hash in visualizer.memory_objects:
+                                            obj = visualizer.memory_objects[obj_hash]
+                                            obj_type = visualizer._extract_type(obj.object_type)
+                                            if obj_type not in obj_by_type:
+                                                obj_by_type[obj_type] = []
+                                            obj_by_type[obj_type].append(obj_hash[:6])
+                                        else:
+                                            if "Unknown" not in obj_by_type:
+                                                obj_by_type["Unknown"] = []
+                                            obj_by_type["Unknown"].append(obj_hash[:6])
+                                    
+                                    # Display grouped objects
+                                    for obj_type, hashes in sorted(obj_by_type.items()):
+                                        st.markdown(f"**{obj_type}:**")
+                                        for hash_id in sorted(hashes):
+                                            st.markdown(f"  - `@{hash_id}`")
                         else:
                             st.markdown("No dependencies")
                     
@@ -1501,9 +1775,13 @@ def main():
                 if search_term:
                     filtered_bc = [bc for bc in filtered_bc if search_term.lower() in bc.get("Objects", "").lower()]
                 
-                # Display filtered data with improved formatting
+                # Create DataFrame with desired column order
                 bc_df = pd.DataFrame(filtered_bc)
                 if not bc_df.empty:
+                    # Reorder columns
+                    bc_df = bc_df[['TaskGraph', 'Operation', 'TaskName', 'Objects', 'GlobalIndex', 'Details']]
+                    
+                    # Display filtered data with improved formatting
                     st.dataframe(
                         bc_df,
                         column_config={
@@ -1517,25 +1795,25 @@ def main():
                                 help="Bytecode operation type",
                                 width="medium"
                             ),
-                            "Details": st.column_config.TextColumn(
-                                "Details",
-                                help="Operation details",
-                                width="large"
+                            "TaskName": st.column_config.TextColumn(
+                                "TaskName",
+                                help="Name of the task",
+                                width="medium"
                             ),
                             "Objects": st.column_config.TextColumn(
                                 "Objects",
                                 help="Objects involved in the operation",
                                 width="large"
                             ),
-                            "TaskName": st.column_config.TextColumn(
-                                "TaskName",
-                                help="Name of the task",
-                                width="medium"
-                            ),
                             "GlobalIndex": st.column_config.NumberColumn(
                                 "Index",
                                 help="Global operation index",
                                 format="%d"
+                            ),
+                            "Details": st.column_config.TextColumn(
+                                "Details",
+                                help="Operation details",
+                                width="large"
                             )
                         },
                         hide_index=True,
