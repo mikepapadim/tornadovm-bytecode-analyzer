@@ -1,8 +1,8 @@
-# <img src="docs/images/preview.png" width="32" height="32" alt="Icon" align="left"> TornadoVM Bytecode Analyzer
+# <img src="docs/images/img.png" width="64" height="64" alt="Icon" align="left"> TornadoVM Bytecode Analyzer
 
 A powerful visualization and analysis tool for TornadoVM bytecode logs. This tool helps developers understand task graph dependencies, memory operations, and execution patterns in TornadoVM applications.
 
-![TornadoVM Bytecode Analyzer](docs/images/img.png)
+![TornadoVM Bytecode Analyzer]
 ## Features
 
 ### 1. Task Graph Analysis
