@@ -619,6 +619,7 @@ class TornadoVisualizer:
         task_data = []
         
         for graph in self.task_graphs:
+            # Base metrics for the graph
             num_allocs = sum(1 for op in graph.operations if op.operation == "ALLOC")
             num_transfers = sum(1 for op in graph.operations 
                                if op.operation.startswith("TRANSFER"))
@@ -631,20 +632,65 @@ class TornadoVisualizer:
             mem_transferred = sum(op.size for op in graph.operations 
                                 if op.operation.startswith("TRANSFER"))
             
-            task_data.append({
-                "TaskGraph": graph.graph_id,
-                "Device": graph.device,
-                "NumTasks": len(graph.tasks),
-                "Tasks": ", ".join(graph.tasks),
-                "Allocations": num_allocs,
-                "Deallocations": num_deallocs,
-                "PersistedObjects": num_persisted,
-                "TotalMemoryAllocated": mem_allocated,
-                "TotalMemoryTransferred": mem_transferred,
-                "Dependencies": ", ".join(graph.dependencies.keys())
-            })
+            # Get exact object dependencies
+            dep_details = []
+            for dep_graph, obj_hashes in graph.dependencies.items():
+                obj_details = []
+                for obj_hash in obj_hashes:
+                    if obj_hash in self.memory_objects:
+                        obj = self.memory_objects[obj_hash]
+                        obj_details.append(f"{obj.object_type}@{obj_hash}")
+                if obj_details:
+                    dep_details.append(f"{dep_graph}: {', '.join(obj_details)}")
+            
+            # If no tasks are explicitly listed, create a default task entry
+            if not graph.tasks:
+                task_data.append({
+                    "TaskGraph": graph.graph_id,
+                    "Task": f"{graph.graph_id}_main",
+                    "Device": graph.device,
+                    "Allocations": num_allocs,
+                    "Deallocations": num_deallocs,
+                    "PersistedObjects": num_persisted,
+                    "TotalMemoryAllocated (MB)": f"{mem_allocated/(1024*1024):.2f}",
+                    "TotalMemoryTransferred (MB)": f"{mem_transferred/(1024*1024):.2f}",
+                    "Dependencies": "\n".join(dep_details) if dep_details else "None",
+                    "NumOperations": len(graph.operations)
+                })
+            else:
+                # Create an entry for each task in the graph
+                for task_name in graph.tasks:
+                    task_data.append({
+                        "TaskGraph": graph.graph_id,
+                        "Task": task_name,
+                        "Device": graph.device,
+                        "Allocations": num_allocs,
+                        "Deallocations": num_deallocs,
+                        "PersistedObjects": num_persisted,
+                        "TotalMemoryAllocated (MB)": f"{mem_allocated/(1024*1024):.2f}",
+                        "TotalMemoryTransferred (MB)": f"{mem_transferred/(1024*1024):.2f}",
+                        "Dependencies": "\n".join(dep_details) if dep_details else "None",
+                        "NumOperations": len(graph.operations)
+                    })
         
-        return pd.DataFrame(task_data)
+        # Create DataFrame and ensure it's not empty
+        df = pd.DataFrame(task_data)
+        if df.empty:
+            # Create a dummy row if no data
+            df = pd.DataFrame([{
+                "TaskGraph": "No Data",
+                "Task": "No Tasks Found",
+                "Device": "N/A",
+                "Allocations": 0,
+                "Deallocations": 0,
+                "PersistedObjects": 0,
+                "TotalMemoryAllocated (MB)": "0.00",
+                "TotalMemoryTransferred (MB)": "0.00",
+                "Dependencies": "None",
+                "NumOperations": 0
+            }])
+        
+        return df
     
     def get_memory_usage_chart(self) -> go.Figure:
         """Generate a chart showing memory usage over time"""
@@ -964,13 +1010,14 @@ def main():
         num_task_graphs = len(visualizer.task_graphs)
         total_objects = len(visualizer.memory_objects)
         total_bytecodes = len(visualizer.bytecode_details)
-        
+        total_tasks = sum(len(graph.tasks) for graph in visualizer.task_graphs)
+
         # Calculate memory metrics
         total_allocated = sum(obj.size for obj in visualizer.memory_objects.values())
         total_persisted = sum(obj.size for obj in visualizer.memory_objects.values() 
                              if "Persisted" in obj.current_status)
         
-        # Get summary dataframe
+        # Get summary dataframe with enhanced task details
         summary_df = visualizer.generate_task_summary()
         
         # Different pages based on sidebar selection
@@ -978,19 +1025,77 @@ def main():
             st.header("Overview Dashboard")
             
             # Display key metrics in a row
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
                 st.metric("Task Graphs", num_task_graphs)
             with col2:
-                st.metric("Total Objects", total_objects)
+                st.metric("Total Tasks", total_tasks)
             with col3:
-                st.metric("Memory (KB)", f"{total_allocated/1024:.1f}")
+                st.metric("Total Objects", total_objects)
             with col4:
+                st.metric("Memory (MB)", f"{total_allocated/(1024*1024):.2f}")
+            with col5:
                 st.metric("Total Bytecodes", total_bytecodes)
             
             # Display summary table
             st.subheader("Task Graph Summary")
-            st.dataframe(summary_df)
+            # Configure the dataframe display
+            st.markdown("""
+            <style>
+            .task-summary {
+                white-space: pre-wrap !important;
+                font-family: monospace !important;
+            }
+            .stDataFrame {
+                width: 100% !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            # Display with custom formatting
+            st.dataframe(
+                summary_df,
+                column_config={
+                    "Dependencies": st.column_config.TextColumn(
+                        "Dependencies",
+                        help="Object dependencies between task graphs",
+                        max_chars=1000,
+                        width="large"
+                    ),
+                    "Task": st.column_config.TextColumn(
+                        "Task",
+                        help="Individual task name",
+                        width="medium"
+                    ),
+                    "TaskGraph": st.column_config.TextColumn(
+                        "TaskGraph",
+                        help="Task graph identifier",
+                        width="medium"
+                    ),
+                    "Device": st.column_config.TextColumn(
+                        "Device",
+                        help="Execution device",
+                        width="medium"
+                    ),
+                    "NumOperations": st.column_config.NumberColumn(
+                        "Operations",
+                        help="Number of operations in the task graph",
+                        format="%d"
+                    ),
+                    "TotalMemoryAllocated (MB)": st.column_config.NumberColumn(
+                        "Memory Allocated (MB)",
+                        help="Total memory allocated in MB",
+                        format="%.2f"
+                    ),
+                    "TotalMemoryTransferred (MB)": st.column_config.NumberColumn(
+                        "Memory Transferred (MB)",
+                        help="Total memory transferred in MB",
+                        format="%.2f"
+                    )
+                },
+                hide_index=True,
+                use_container_width=True
+            )
             
             # Simple dependency graph
             st.subheader("Task Graph Dependencies")
