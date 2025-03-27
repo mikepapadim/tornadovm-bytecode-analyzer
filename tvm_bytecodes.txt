@@ -1,0 +1,54 @@
+Interpreter instance running bytecodes for:  PTX -- NVIDIA GeForce RTX 3070 Running in thread:  main
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@194bcebf on  PTX -- NVIDIA GeForce RTX 3070 , size=8216, batchSize=0
+bc:  TRANSFER_HOST_TO_DEVICE_ALWAYS  [0x194bcebf] uk.ac.manchester.tornado.api.types.arrays.FloatArray@194bcebf on  PTX -- NVIDIA GeForce RTX 3070 , size=8216, batchSize=0, offset=0 [event list=-1]
+bc:  LAUNCH  task lookUpBufferX.forceUpdateXperToken - emptyTaskToForceCopyIn on PTX -- NVIDIA GeForce RTX 3070, numThreadBatch=0, offset=0 [event list=0]
+bc:  BARRIER  event-list 2
+bc:  END
+ 
+Interpreter instance running bytecodes for:  PTX -- NVIDIA GeForce RTX 3070 Running in thread:  main
+bc:  ALLOC uk.ac.manchester.tornado.api.KernelContext@1c55f277 on  PTX -- NVIDIA GeForce RTX 3070 , size=136, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@5ddabb18 on  PTX -- NVIDIA GeForce RTX 3070 , size=56, batchSize=0
+bc:  ON_DEVICE_BUFFER [0x194bcebf] uk.ac.manchester.tornado.api.types.arrays.FloatArray@194bcebf on  PTX -- NVIDIA GeForce RTX 3070 
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0x5ddabb18] uk.ac.manchester.tornado.api.types.arrays.FloatArray@5ddabb18 on  PTX -- NVIDIA GeForce RTX 3070 , size=56, batchSize=0, offset=0 [event list=-1]
+bc:  LAUNCH  task rmsnorm.reduce - reduceSquareSums on PTX -- NVIDIA GeForce RTX 3070, numThreadBatch=0, offset=0 [event list=0]
+bc:  LAUNCH  task rmsnorm.sum - finalSum on PTX -- NVIDIA GeForce RTX 3070, numThreadBatch=0, offset=0 [event list=1]
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@64df9a61 on  PTX -- NVIDIA GeForce RTX 3070 , size=8216, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@277f7dd3 on  PTX -- NVIDIA GeForce RTX 3070 , size=131096, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.IntArray@6c8bca63 on  PTX -- NVIDIA GeForce RTX 3070 , size=36, batchSize=0
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0x277f7dd3] uk.ac.manchester.tornado.api.types.arrays.FloatArray@277f7dd3 on  PTX -- NVIDIA GeForce RTX 3070 , size=131096, batchSize=0, offset=0 [event list=-1]
+bc:  TRANSFER_HOST_TO_DEVICE_ALWAYS  [0x6c8bca63] uk.ac.manchester.tornado.api.types.arrays.IntArray@6c8bca63 on  PTX -- NVIDIA GeForce RTX 3070 , size=36, batchSize=0, offset=0 [event list=-1]
+bc:  LAUNCH  task rmsnorm.normalize - normalizeAndScale on PTX -- NVIDIA GeForce RTX 3070, numThreadBatch=0, offset=0 [event list=2]
+bc:  DEALLOC [0x1c55f277] uk.ac.manchester.tornado.api.KernelContext@1c55f277 [Status:  Persisted ] on  PTX -- NVIDIA GeForce RTX 3070 
+bc:  DEALLOC [0x5ddabb18] uk.ac.manchester.tornado.api.types.arrays.FloatArray@5ddabb18 [Status:  Persisted ] on  PTX -- NVIDIA GeForce RTX 3070 
+bc:  DEALLOC [0x277f7dd3] uk.ac.manchester.tornado.api.types.arrays.FloatArray@277f7dd3 [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3070 
+bc:  BARRIER  event-list 9
+bc:  END
+
+Interpreter instance running bytecodes for:  PTX -- NVIDIA GeForce RTX 3070 Running in thread:  main
+bc:  ALLOC uk.ac.manchester.tornado.api.KernelContext@1c55f277 on  PTX -- NVIDIA GeForce RTX 3070 , size=136, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@7c56e013 on  PTX -- NVIDIA GeForce RTX 3070 , size=8216, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@77602954 on  PTX -- NVIDIA GeForce RTX 3070 , size=268435480, batchSize=0
+bc:  ON_DEVICE_BUFFER [0x64df9a61] uk.ac.manchester.tornado.api.types.arrays.FloatArray@64df9a61 on  PTX -- NVIDIA GeForce RTX 3070 
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0x7c56e013] uk.ac.manchester.tornado.api.types.arrays.FloatArray@7c56e013 on  PTX -- NVIDIA GeForce RTX 3070 , size=8216, batchSize=0, offset=0 [event list=-1]
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0x77602954] uk.ac.manchester.tornado.api.types.arrays.FloatArray@77602954 on  PTX -- NVIDIA GeForce RTX 3070 , size=268435480, batchSize=0, offset=0 [event list=-1]
+bc:  ON_DEVICE_BUFFER [0x64df9a61] uk.ac.manchester.tornado.api.types.arrays.FloatArray@64df9a61 on  PTX -- NVIDIA GeForce RTX 3070 
+bc:  LAUNCH  task qkv.qmatmul - matrixVectorSimple on PTX -- NVIDIA GeForce RTX 3070, numThreadBatch=0, offset=0 [event list=0]
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@40258c2f on  PTX -- NVIDIA GeForce RTX 3070 , size=8216, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@e260766 on  PTX -- NVIDIA GeForce RTX 3070 , size=67108888, batchSize=0
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0x40258c2f] uk.ac.manchester.tornado.api.types.arrays.FloatArray@40258c2f on  PTX -- NVIDIA GeForce RTX 3070 , size=8216, batchSize=0, offset=0 [event list=-1]
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0xe260766] uk.ac.manchester.tornado.api.types.arrays.FloatArray@e260766 on  PTX -- NVIDIA GeForce RTX 3070 , size=67108888, batchSize=0, offset=0 [event list=-1]
+bc:  LAUNCH  task qkv.kmatmul - matrixVectorSimple on PTX -- NVIDIA GeForce RTX 3070, numThreadBatch=0, offset=0 [event list=1]
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@6731787b on  PTX -- NVIDIA GeForce RTX 3070 , size=8216, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@2c3dec30 on  PTX -- NVIDIA GeForce RTX 3070 , size=67108888, batchSize=0
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0x6731787b] uk.ac.manchester.tornado.api.types.arrays.FloatArray@6731787b on  PTX -- NVIDIA GeForce RTX 3070 , size=8216, batchSize=0, offset=0 [event list=-1]
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0x2c3dec30] uk.ac.manchester.tornado.api.types.arrays.FloatArray@2c3dec30 on  PTX -- NVIDIA GeForce RTX 3070 , size=67108888, batchSize=0, offset=0 [event list=-1]
+bc:  LAUNCH  task qkv.vmatmul - matrixVectorSimple on PTX -- NVIDIA GeForce RTX 3070, numThreadBatch=0, offset=0 [event list=2]
+bc:  ON_DEVICE_BUFFER [0x64df9a61] uk.ac.manchester.tornado.api.types.arrays.FloatArray@64df9a61 on  PTX -- NVIDIA GeForce RTX 3070 
+bc:  LAUNCH  task qkv.forcePropagation - forcePropagationOneArray on PTX -- NVIDIA GeForce RTX 3070, numThreadBatch=0, offset=0 [event list=3]
+bc:  DEALLOC [0x1c55f277] uk.ac.manchester.tornado.api.KernelContext@1c55f277 [Status:  Persisted ] on  PTX -- NVIDIA GeForce RTX 3070 
+bc:  DEALLOC [0x77602954] uk.ac.manchester.tornado.api.types.arrays.FloatArray@77602954 [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3070 
+bc:  DEALLOC [0xe260766] uk.ac.manchester.tornado.api.types.arrays.FloatArray@e260766 [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3070 
+bc:  DEALLOC [0x2c3dec30] uk.ac.manchester.tornado.api.types.arrays.FloatArray@2c3dec30 [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3070 
+bc:  BARRIER  event-list 12
+bc:  END
+
