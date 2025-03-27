@@ -602,8 +602,13 @@ class TornadoVisualizer:
         """Create an enhanced interactive timeline of memory operations"""
         # Prepare data
         operations = []
+        taskgraph_boundaries = []  # Track where each taskgraph starts and ends
+        current_index = 0
         
         for i, graph in enumerate(self.task_graphs):
+            # Record taskgraph boundary
+            start_index = current_index
+            
             for j, op in enumerate(graph.operations):
                 if op.operation in ["ALLOC", "TRANSFER_HOST_TO_DEVICE_ONCE", "TRANSFER_HOST_TO_DEVICE_ALWAYS", 
                                   "TRANSFER_DEVICE_TO_HOST_ALWAYS", "DEALLOC", "ON_DEVICE", "ON_DEVICE_BUFFER"]:
@@ -616,10 +621,17 @@ class TornadoVisualizer:
                             "Object": f"{obj_type}@{obj_hash[:8]}",
                             "ObjectType": obj_type,
                             "Size": op.size if hasattr(op, 'size') else 0,
-                            "OperationIndex": j,
-                            "GlobalIndex": sum(len(g.operations) for g in self.task_graphs[:i]) + j,
+                            "OperationIndex": current_index,
                             "Status": op.status if hasattr(op, 'status') else ""
                         })
+                current_index += 1
+            
+            # Record taskgraph boundary
+            taskgraph_boundaries.append({
+                'graph_id': graph.graph_id,
+                'start': start_index,
+                'end': current_index - 1
+            })
         
         df = pd.DataFrame(operations)
         if df.empty:
@@ -639,16 +651,44 @@ class TornadoVisualizer:
             "ON_DEVICE_BUFFER": "#fb923c"  # Light orange
         }
         
+        # Add description of the visualization
+        st.markdown("""
+        This timeline shows memory operations across different task graphs:
+        - **Vertical lines** separate different task graphs
+        - **Colored dots** represent different memory operations:
+            - 🟢 Green: Memory allocations
+            - 🔵 Blue: Host-to-device transfers
+            - 🟣 Purple: Device-to-host transfers
+            - 🔴 Red: Memory deallocations
+            - 🟠 Orange: Device buffer operations
+        - **Size of dots** indicates the amount of memory involved
+        """)
+        
+        # Add vertical lines for taskgraph boundaries
+        for boundary in taskgraph_boundaries:
+            # Add vertical line at the start of each taskgraph
+            fig.add_vline(
+                x=boundary['start'],
+                line_dash="dash",
+                line_color="rgba(255, 255, 255, 0.2)",
+                annotation_text=boundary['graph_id'],
+                annotation_position="top",
+                annotation=dict(
+                    font_size=18,  # Increased from 14
+                    font_color="white"
+                )
+            )
+        
         # Add traces for each operation type
         for op_type, color in color_map.items():
             df_filtered = df[df["Operation"] == op_type]
             if not df_filtered.empty:
                 # Size mapping for markers - make it proportional to data size but with min/max constraints
                 size_ref = df_filtered["Size"].max() if not df_filtered.empty else 1
-                sizes = df_filtered["Size"].apply(lambda x: max(8, min(20, 8 + (x / size_ref) * 12)))
+                sizes = df_filtered["Size"].apply(lambda x: max(10, min(25, 10 + (x / size_ref) * 15)))  # Increased marker sizes
                 
                 fig.add_trace(go.Scatter(
-                    x=df_filtered["GlobalIndex"],
+                    x=df_filtered["OperationIndex"],
                     y=df_filtered["Object"],
                     mode="markers",
                     marker=dict(
@@ -675,23 +715,51 @@ class TornadoVisualizer:
                 'x':0.5,
                 'xanchor': 'center',
                 'yanchor': 'top',
-                'font': {'size': 24}
+                'font': {'size': 28}  # Increased from 24
             },
-            xaxis_title="Operation Sequence",
-            yaxis_title="Memory Objects",
+            xaxis_title={
+                'text': "TaskGraph Sequence",
+                'font': {'size': 20}  # Increased axis title
+            },
+            yaxis_title={
+                'text': "Memory Objects",
+                'font': {'size': 20}  # Increased axis title
+            },
             height=600,
             template="plotly_white",
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='white'),
+            font=dict(
+                color='white',
+                size=16  # Increased from 14
+            ),
             xaxis=dict(
                 gridcolor='rgba(128,128,128,0.2)',
                 zerolinecolor='rgba(128,128,128,0.2)',
+                showticklabels=True,
+                tickmode='array',
+                ticktext=[b['graph_id'] for b in taskgraph_boundaries],
+                tickvals=[(b['start'] + b['end'])/2 for b in taskgraph_boundaries],
+                tickangle=0,
+                tickfont=dict(size=16)  # Increased from 14
             ),
             yaxis=dict(
                 gridcolor='rgba(128,128,128,0.2)',
                 zerolinecolor='rgba(128,128,128,0.2)',
+                tickfont=dict(size=16)  # Increased from 14
             ),
+            showlegend=True,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=1.05,
+                bgcolor='rgba(0,0,0,0)',
+                font=dict(size=16)  # Increased from 14
+            ),
+            hoverlabel=dict(
+                font_size=16  # Increased hover label font size
+            )
         )
         
         return fig
@@ -1349,7 +1417,7 @@ def main():
     
     # Show welcome screen when no file is uploaded
     if not uploaded_file:
-        st.header("Welcome to TornadoVM Bytecode Visualizer")
+        st.header("Welcome to TornadoVM Bytecode Analyzer")
         
         st.markdown("""
         This tool helps you analyze TornadoVM bytecode execution logs to understand:
@@ -1368,9 +1436,10 @@ def main():
         ### Sample Visualization
         """)
         
-        # Show example image
-        st.image("https://via.placeholder.com/800x400.png?text=TornadoVM+Task+Graph+Visualization", 
-                caption="Example task graph visualization")
+        # Show example image from docs
+        st.image("docs/images/basic_view.png", 
+                caption="Example task graph visualization",
+                use_column_width=True)
         return
     
     # Process uploaded file
