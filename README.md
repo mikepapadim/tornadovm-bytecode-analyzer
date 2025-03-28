@@ -6,6 +6,12 @@ A visualization and analysis tool for TornadoVM bytecode execution logs that hel
 
 The TornadoVM Bytecode Analyzer provides interactive visualizations and detailed analysis of task graphs, memory operations, and bytecode execution patterns. This helps developers optimize their applications and understand data flow between tasks.
 
+<p align="center">
+  <img src="docs/images/demo.gif" width="800" alt="TornadoVM Bytecode Analyzer Demo" style="display: block; margin: 20px auto;">
+</p>
+
+The analyzer offers multiple views for comprehensive analysis of your TornadoVM applications:
+
 <img src="docs/images/basic_view.png" width="800" alt="TornadoVM Bytecode Analyzer Basic View" style="display: block; margin: 20px auto;">
 
 ## Features
