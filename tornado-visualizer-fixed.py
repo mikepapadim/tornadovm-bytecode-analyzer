@@ -398,7 +398,7 @@ class TornadoVisualizer:
                     color='#666666',
                     fontcolor='white',
                     fontname='Arial',
-                    fontsize='10',
+                    fontsize='12',  # Increased from 10
                     margin='0.15',
                     height='0.4',
                     width='1.8')
@@ -408,7 +408,7 @@ class TornadoVisualizer:
                     color='#666666',
                     fontcolor='white',
                     fontname='Arial',
-                    fontsize='9',
+                    fontsize='11',  # Increased from 9
                     penwidth='0.7')
             
             # Add nodes for each task graph
@@ -573,9 +573,9 @@ class TornadoVisualizer:
                                   min_source_margin=25,  # Increased margin
                                   ax=ax)
             
-            # Add labels with even smaller font
+            # Add labels with larger font
             nx.draw_networkx_labels(viz_graph, pos, 
-                                   font_size=6,
+                                   font_size=8,  # Increased from 6
                                    font_family='monospace',
                                    font_weight='bold',
                                    font_color='white',
@@ -670,12 +670,14 @@ class TornadoVisualizer:
             fig.add_vline(
                 x=boundary['start'],
                 line_dash="dash",
-                line_color="rgba(255, 255, 255, 0.2)",
+                line_color="rgba(255, 255, 255, 0.3)",
+                line_width=2,  # Made line thicker
                 annotation_text=boundary['graph_id'],
                 annotation_position="top",
                 annotation=dict(
-                    font_size=18,  # Increased from 14
-                    font_color="white"
+                    font_size=16,
+                    font_color="white",
+                    textangle=-15  # Reduced rotation angle
                 )
             )
         
@@ -715,15 +717,15 @@ class TornadoVisualizer:
                 'x':0.5,
                 'xanchor': 'center',
                 'yanchor': 'top',
-                'font': {'size': 28}  # Increased from 24
+                'font': {'size': 30}  # Increased from 28
             },
             xaxis_title={
                 'text': "TaskGraph Sequence",
-                'font': {'size': 20}  # Increased axis title
+                'font': {'size': 22}  # Increased from 20
             },
             yaxis_title={
                 'text': "Memory Objects",
-                'font': {'size': 20}  # Increased axis title
+                'font': {'size': 22}  # Increased from 20
             },
             height=600,
             template="plotly_white",
@@ -731,7 +733,7 @@ class TornadoVisualizer:
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(
                 color='white',
-                size=16  # Increased from 14
+                size=18  # Increased from 16
             ),
             xaxis=dict(
                 gridcolor='rgba(128,128,128,0.2)',
@@ -741,12 +743,12 @@ class TornadoVisualizer:
                 ticktext=[b['graph_id'] for b in taskgraph_boundaries],
                 tickvals=[(b['start'] + b['end'])/2 for b in taskgraph_boundaries],
                 tickangle=0,
-                tickfont=dict(size=16)  # Increased from 14
+                tickfont=dict(size=18)  # Increased from 16
             ),
             yaxis=dict(
                 gridcolor='rgba(128,128,128,0.2)',
                 zerolinecolor='rgba(128,128,128,0.2)',
-                tickfont=dict(size=16)  # Increased from 14
+                tickfont=dict(size=18)  # Increased from 16
             ),
             showlegend=True,
             legend=dict(
@@ -755,10 +757,10 @@ class TornadoVisualizer:
                 xanchor="left",
                 x=1.05,
                 bgcolor='rgba(0,0,0,0)',
-                font=dict(size=16)  # Increased from 14
+                font=dict(size=18)  # Increased from 16
             ),
             hoverlabel=dict(
-                font_size=16  # Increased hover label font size
+                font_size=18  # Increased from 16
             )
         )
         
@@ -883,7 +885,7 @@ class TornadoVisualizer:
                 'x':0.5,
                 'xanchor': 'center',
                 'yanchor': 'top',
-                'font': {'size': 18}
+                'font': {'size': 20}  # Increased from 18
             },
             xaxis_title="Operation Sequence",
             yaxis=dict(
@@ -897,7 +899,8 @@ class TornadoVisualizer:
             width=1000,
             template="plotly_white",
             margin=dict(l=50, r=50, t=80, b=50),
-            showlegend=True
+            showlegend=True,
+            font=dict(size=18)  # Added global font size
         )
         
         return fig
@@ -1034,19 +1037,35 @@ class TornadoVisualizer:
         """Generate a chart showing memory usage over time"""
         # Track memory allocations and deallocations over time
         memory_events = []
+        task_boundaries = []  # Track task boundaries
+        taskgraph_boundaries = []  # Track taskgraph boundaries
+        current_index = 0
         
         for i, graph in enumerate(self.task_graphs):
-            base_index = sum(len(g.operations) for g in self.task_graphs[:i])
+            # Record taskgraph boundary
+            taskgraph_boundaries.append({
+                'index': current_index,
+                'name': graph.graph_id
+            })
             
+            # Track tasks in this graph
+            current_task = None
             for j, op in enumerate(graph.operations):
-                global_index = base_index + j
+                if op.operation == "LAUNCH" and op.task_name:
+                    current_task = op.task_name
+                    task_boundaries.append({
+                        'index': current_index + j,
+                        'name': op.task_name,
+                        'graph': graph.graph_id
+                    })
                 
                 if op.operation == "ALLOC":
                     for obj_ref in op.objects:
                         obj_hash = self._extract_hash(obj_ref)
                         memory_events.append({
-                            "GlobalIndex": global_index,
+                            "GlobalIndex": current_index + j,
                             "TaskGraph": graph.graph_id,
+                            "Task": current_task,
                             "Operation": "Allocation",
                             "Size": op.size,
                             "Object": obj_hash
@@ -1058,12 +1077,15 @@ class TornadoVisualizer:
                         # Only count as deallocation if actually freed
                         if "Freed" in op.status:
                             memory_events.append({
-                                "GlobalIndex": global_index,
+                                "GlobalIndex": current_index + j,
                                 "TaskGraph": graph.graph_id,
+                                "Task": current_task,
                                 "Operation": "Deallocation",
                                 "Size": -1 * self._get_object_size(obj_hash),  # Negative size for deallocation
                                 "Object": obj_hash
                             })
+            
+            current_index += len(graph.operations)
         
         # Convert to DataFrame
         df = pd.DataFrame(memory_events)
@@ -1104,7 +1126,8 @@ class TornadoVisualizer:
                 marker=dict(color="green", size=8, symbol="circle"),
                 name="Allocations",
                 text=allocs.apply(
-                    lambda row: f"Allocated {row['Size']:,} bytes<br>Object: {row['Object']}<br>In {row['TaskGraph']}",
+                    lambda row: f"Allocated {row['Size']:,} bytes<br>Object: {row['Object']}<br>In {row['TaskGraph']}" +
+                              (f"<br>Task: {row['Task']}" if row['Task'] else ""),
                     axis=1
                 ),
                 hoverinfo="text"
@@ -1120,11 +1143,45 @@ class TornadoVisualizer:
                 marker=dict(color="red", size=8, symbol="x"),
                 name="Deallocations",
                 text=deallocs.apply(
-                    lambda row: f"Deallocated {abs(row['Size']):,} bytes<br>Object: {row['Object']}<br>In {row['TaskGraph']}",
+                    lambda row: f"Deallocated {abs(row['Size']):,} bytes<br>Object: {row['Object']}<br>In {row['TaskGraph']}" +
+                              (f"<br>Task: {row['Task']}" if row['Task'] else ""),
                     axis=1
                 ),
                 hoverinfo="text"
             ))
+        
+        # Add vertical lines for taskgraph boundaries
+        max_memory = df["CumulativeMemory"].max()
+        for boundary in taskgraph_boundaries[1:]:  # Skip first boundary
+            fig.add_vline(
+                x=boundary['index'],
+                line_dash="dash",
+                line_color="rgba(255, 255, 255, 0.3)",
+                line_width=2,  # Made line thicker
+                annotation_text=boundary['name'],
+                annotation_position="top",
+                annotation=dict(
+                    font_size=16,
+                    font_color="white",
+                    textangle=-15  # Reduced rotation angle
+                )
+            )
+        
+        # Add vertical lines for task boundaries
+        for boundary in task_boundaries:
+            fig.add_vline(
+                x=boundary['index'],
+                line_dash="dot",
+                line_color="rgba(255, 255, 255, 0.2)",
+                line_width=2,  # Made line thicker
+                annotation_text=boundary['name'],
+                annotation_position="bottom",
+                annotation=dict(
+                    font_size=14,
+                    font_color="white",
+                    textangle=-15  # Reduced rotation angle
+                )
+            )
         
         # Update layout
         fig.update_layout(
@@ -1134,14 +1191,37 @@ class TornadoVisualizer:
                 'x':0.5,
                 'xanchor': 'center',
                 'yanchor': 'top',
-                'font': {'size': 18}
+                'font': {'size': 20}  # Increased from 18
             },
-            xaxis_title="Operation Sequence",
-            yaxis_title="Memory Usage (bytes)",
+            xaxis=dict(
+                showticklabels=False,  # Hide operation sequence numbers
+                showgrid=True,
+                gridcolor='rgba(128,128,128,0.2)',
+                zeroline=False
+            ),
+            yaxis_title={
+                'text': "Memory Usage (bytes)",
+                'font': {'size': 16}
+            },
             hovermode="closest",
             height=400,
             width=600,
             template="plotly_white",
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(
+                color='white',
+                size=14
+            ),
+            showlegend=True,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="right",
+                x=1,
+                bgcolor='rgba(0,0,0,0)',
+                font=dict(size=14)
+            )
         )
         
         return fig
@@ -1197,12 +1277,13 @@ class TornadoVisualizer:
                 'x':0.5,
                 'xanchor': 'center',
                 'yanchor': 'top',
-                'font': {'size': 18}
+                'font': {'size': 20}  # Increased from 18
             },
             height=400,
             width=600,
             template="plotly_white",
-            showlegend=True
+            showlegend=True,
+            font=dict(size=18)  # Added global font size
         )
         
         return fig
@@ -1258,104 +1339,6 @@ class TornadoVisualizer:
         
         return fig
 
-    def visualize_mermaid_graph(self) -> None:
-        """Display the Mermaid graph using Streamlit"""
-        try:
-            # Build the Mermaid graph definition
-            mermaid_def = [
-                "graph TD",
-                "    %% Style definitions",
-                "    classDef alloc fill:#22c55e,stroke:#333,stroke-width:2px",
-                "    classDef transfer fill:#3b82f6,stroke:#333,stroke-width:2px",
-                "    classDef launch fill:#f472b6,stroke:#333,stroke-width:2px",
-                "    classDef device fill:#666666,stroke:#333,stroke-width:2px"
-            ]
-            
-            # Process each task graph
-            for graph in self.task_graphs:
-                # Group operations by type
-                op_groups = defaultdict(list)
-                for op in graph.operations:
-                    op_groups[op.operation].append(op)
-                
-                # Create subgraph
-                graph_id = graph.graph_id.replace(" ", "_").replace("-", "_")
-                mermaid_def.append(f"    subgraph {graph_id}")
-                
-                # Track nodes for dependencies
-                prev_node = None
-                first_node = None
-                last_node = None
-                
-                # Add nodes for each operation group
-                for op_type, ops in op_groups.items():
-                    node_id = f"{graph_id}_{op_type}".replace(".", "_")
-                    count = len(ops)
-                    total_size = sum(op.size for op in ops if hasattr(op, 'size'))
-                    
-                    # Create node label
-                    if total_size > 0:
-                        label = f"{op_type}\\n{count} ops\\n{total_size/(1024*1024):.2f}MB"
-                    else:
-                        label = f"{op_type}\\n{count} ops"
-                    
-                    # Add node
-                    mermaid_def.append(f"        {node_id}[{label}]")
-                    
-                    # Apply style
-                    style_class = "device"
-                    if op_type in ["ALLOC", "DEALLOC"]:
-                        style_class = "alloc"
-                    elif op_type.startswith("TRANSFER"):
-                        style_class = "transfer"
-                    elif op_type == "LAUNCH":
-                        style_class = "launch"
-                    mermaid_def.append(f"        class {node_id} {style_class}")
-                    
-                    # Connect to previous node
-                    if prev_node:
-                        mermaid_def.append(f"        {prev_node} --> {node_id}")
-                    else:
-                        first_node = node_id
-                    
-                    prev_node = node_id
-                    last_node = node_id
-                
-                mermaid_def.append("    end")
-                
-                # Store nodes for dependencies
-                if first_node and last_node:
-                    graph.first_node = first_node
-                    graph.last_node = last_node
-            
-            # Add dependencies between graphs
-            for graph in self.task_graphs:
-                for dep_graph_id, objects in graph.dependencies.items():
-                    if objects:
-                        src_graph = next((g for g in self.task_graphs if g.graph_id == dep_graph_id), None)
-                        if src_graph and hasattr(src_graph, 'last_node') and hasattr(graph, 'first_node'):
-                            # Calculate total size
-                            total_size = sum(
-                                self.memory_objects[obj_hash].size 
-                                for obj_hash in objects 
-                                if obj_hash in self.memory_objects
-                            )
-                            
-                            # Create edge label
-                            label = f"{len(objects)} objects\\n{total_size/(1024*1024):.2f}MB"
-                            mermaid_def.append(f"    {src_graph.last_node} -->|{label}| {graph.first_node}")
-            
-            # Join the definition
-            mermaid_code = "\n".join(mermaid_def)
-            
-            # Use Streamlit's native mermaid support
-            st.write("Task Graph Flow")
-            st.code(mermaid_code, language="mermaid")
-            
-        except Exception as e:
-            st.error(f"Error generating graph: {str(e)}")
-            st.info("Please check that the task graphs contain valid data")
-
 # Main Streamlit application
 def main():
     # Apply custom CSS for dark theme
@@ -1364,24 +1347,54 @@ def main():
     .main {
         background-color: #0e1117;
         color: #ffffff;
+        font-size: 16px;  # Added base font size
     }
-    h1, h2, h3 {
+    h1 {
         color: #ffffff;
+        font-size: 32px;  # Increased from default
+    }
+    h2 {
+        color: #ffffff;
+        font-size: 26px;  # Increased from default
+    }
+    h3 {
+        color: #ffffff;
+        font-size: 22px;  # Increased from default
+    }
+    .stMarkdown {
+        font-size: 16px;  # Added for markdown text
+    }
+    .stDataFrame {
+        font-size: 16px;  # Added for dataframes
+    }
+    .stSelectbox {
+        font-size: 16px;  # Added for selectboxes
+    }
+    .stRadio {
+        font-size: 16px;  # Added for radio buttons
     }
     .stMetric {
         background-color: #1e2130;
         padding: 15px;
         border-radius: 5px;
+        font-size: 16px;  # Added for metrics
     }
     .metric-card {
         background-color: #1e2130;
         border-radius: 5px;
         padding: 15px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        font-size: 16px;  # Added for metric cards
     }
     .dashboard-title {
         text-align: center;
         margin-bottom: 30px;
+        font-size: 18px;  # Added for dashboard title
+    }
+    .task-summary {
+        white-space: pre-wrap !important;
+        font-family: monospace !important;
+        font-size: 16px !important;  # Added for task summary
     }
     </style>
     """, unsafe_allow_html=True)
@@ -1602,26 +1615,36 @@ def main():
         elif page == "Task Graphs":
             st.header("Task Graph Analysis")
             
-            # Detailed dependency visualization
-            st.subheader("Task Graph Dependencies")
-            visualizer.visualize_dependency_graph_detailed()
+            st.markdown("""
+            Visualize and analyze task graph dependencies and their structure:
             
-            # Task details
-            st.subheader("Task Details")
+            **Left**: Task graph dependency visualization showing data flow between graphs.
             
-            # Select a specific task graph
-            if visualizer.task_graphs:
-                selected_graph = st.selectbox(
-                    "Select Task Graph:",
-                    options=[graph.graph_id for graph in visualizer.task_graphs]
-                )
+            **Right**: Detailed view of selected task graph, including device info, tasks, and bytecode operations.
+            """)
+            
+            # Split into two columns
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                # Detailed dependency visualization
+                st.subheader("Task Graph Dependencies")
+                visualizer.visualize_dependency_graph_detailed()
+            
+            with col2:
+                # Task details
+                st.subheader("Task Details")
                 
-                # Show selected graph details
-                selected = next((g for g in visualizer.task_graphs if g.graph_id == selected_graph), None)
-                if selected:
-                    col1, col2 = st.columns(2)
+                # Select a specific task graph
+                if visualizer.task_graphs:
+                    selected_graph = st.selectbox(
+                        "Select Task Graph:",
+                        options=[graph.graph_id for graph in visualizer.task_graphs]
+                    )
                     
-                    with col1:
+                    # Show selected graph details
+                    selected = next((g for g in visualizer.task_graphs if g.graph_id == selected_graph), None)
+                    if selected:
                         st.markdown(f"**Device:** {selected.device}")
                         st.markdown(f"**Operations:** {len(selected.operations)}")
                         
@@ -1629,49 +1652,46 @@ def main():
                         st.markdown("**Tasks:**")
                         for task in selected.tasks:
                             st.markdown(f"- {task}")
-                    
-                    with col2:
+                        
                         # Show dependencies with object details
                         st.markdown("**Dependencies:**")
                         if selected.dependencies:
                             for dep, objs in selected.dependencies.items():
-                                # Create expandable section for each dependency
-                                with st.expander(f"{dep} ({len(objs)} objects)"):
-                                    # Group objects by type
-                                    obj_by_type = {}
-                                    for obj_hash in objs:
-                                        if obj_hash in visualizer.memory_objects:
-                                            obj = visualizer.memory_objects[obj_hash]
-                                            obj_type = visualizer._extract_type(obj.object_type)
-                                            if obj_type not in obj_by_type:
-                                                obj_by_type[obj_type] = []
-                                            obj_by_type[obj_type].append(obj_hash[:6])
-                                        else:
-                                            if "Unknown" not in obj_by_type:
-                                                obj_by_type["Unknown"] = []
-                                            obj_by_type["Unknown"].append(obj_hash[:6])
-                                    
-                                    # Display grouped objects
-                                    for obj_type, hashes in sorted(obj_by_type.items()):
-                                        st.markdown(f"**{obj_type}:**")
-                                        for hash_id in sorted(hashes):
-                                            st.markdown(f"  - `@{hash_id}`")
+                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;* From {dep}:")
+                                # Group objects by type
+                                obj_by_type = {}
+                                for obj_hash in objs:
+                                    if obj_hash in visualizer.memory_objects:
+                                        obj = visualizer.memory_objects[obj_hash]
+                                        obj_type = visualizer._extract_type(obj.object_type)
+                                        if obj_type not in obj_by_type:
+                                            obj_by_type[obj_type] = []
+                                        obj_by_type[obj_type].append(obj_hash[:6])
+                                    else:
+                                        if "Unknown" not in obj_by_type:
+                                            obj_by_type["Unknown"] = []
+                                        obj_by_type["Unknown"].append(obj_hash[:6])
+                                
+                                # Display grouped objects
+                                for i, (obj_type, hashes) in enumerate(sorted(obj_by_type.items()), 1):
+                                    for hash_id in sorted(hashes):
+                                        st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{i}) {obj_type}: @{hash_id}", unsafe_allow_html=True)
                         else:
                             st.markdown("No dependencies")
-                    
-                    # Show bytecodes
-                    st.subheader("Bytecode Operations")
-                    bytecode_df = pd.DataFrame([
-                        {"Operation": op.operation, 
-                         "Objects": ", ".join(op.objects), 
-                         "Task": op.task_name,
-                         "Size": op.size if hasattr(op, "size") and op.size else 0,
-                         "Status": op.status if hasattr(op, "status") and op.status else ""}
-                        for op in selected.operations
-                    ])
-                    st.dataframe(bytecode_df)
-            else:
-                st.info("No task graphs found in the log file")
+                        
+                        # Show bytecodes
+                        st.subheader("Bytecode Operations")
+                        bytecode_df = pd.DataFrame([
+                            {"Operation": op.operation, 
+                             "Objects": ", ".join(op.objects), 
+                             "Task": op.task_name,
+                             "Size": op.size if hasattr(op, "size") and op.size else 0,
+                             "Status": op.status if hasattr(op, "status") and op.status else ""}
+                            for op in selected.operations
+                        ])
+                        st.dataframe(bytecode_df)
+                else:
+                    st.info("No task graphs found in the log file")
         
         elif page == "Memory Analysis":
             st.header("Memory Analysis")
