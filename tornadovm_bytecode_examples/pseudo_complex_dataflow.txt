@@ -24,7 +24,7 @@ bc:  ALLOC uk.ac.manchester.tornado.api.KernelContext@1f36e637 on  PTX -- NVIDIA
 bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@7cc9ce8 on  PTX -- NVIDIA GeForce RTX 3080 , size=20480, batchSize=0
 bc:  ON_DEVICE_BUFFER [0x19dfb72a] uk.ac.manchester.tornado.api.types.arrays.FloatArray@19dfb72a on  PTX -- NVIDIA GeForce RTX 3080
 bc:  ON_DEVICE_BUFFER [0x67d48005] uk.ac.manchester.tornado.api.types.arrays.FloatArray@67d48005 on  PTX -- NVIDIA GeForce RTX 3080
-bc:  LAUNCH  task Preprocessor.normalize - standardizeValues on PTX -- NVIDIA GeForce RTX 3080, numThreadBatch=0, offset=0 [event list=0]
+bc:  LAUNCH  task Processor.normalize - standardizeValues on PTX -- NVIDIA GeForce RTX 3080, numThreadBatch=0, offset=0 [event list=0]
 bc:  DEALLOC [0x1f36e637] uk.ac.manchester.tornado.api.KernelContext@1f36e637 [Status:  Persisted ] on  PTX -- NVIDIA GeForce RTX 3080
 bc:  BARRIER  event-list 1
 bc:  END
