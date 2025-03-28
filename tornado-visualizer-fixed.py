@@ -198,41 +198,9 @@ class TornadoVisualizer:
         
         # Track objects
         for obj_ref in operation.objects:
-            # Extract hash and type directly from the reference
-            if ':' in obj_ref:
-                # Handle format like "rmsnorm:@hash"
-                obj_type = obj_ref.split(':')[0]
-                obj_hash = self._extract_hash(obj_ref)
-            else:
-                # Handle format like "uk.ac.manchester.tornado.api.types.arrays.FloatArray@hash"
-                match = re.search(r"([\w\.]+)@([0-9a-f]+)", obj_ref)
-                if match:
-                    full_type = match.group(1)
-                    obj_hash = match.group(2)
-                    # Extract meaningful type name
-                    if '.' in full_type:
-                        parts = full_type.split('.')
-                        # Keep only meaningful parts of the package path
-                        meaningful_parts = [p for p in parts if p not in ['uk', 'ac', 'manchester', 'tornado', 'api', 'types', 'arrays']]
-                        obj_type = meaningful_parts[-1] if meaningful_parts else parts[-1]
-                    else:
-                        obj_type = full_type
-                else:
-                    # Try to extract hash from Object Hash Code format
-                    hash_match = re.search(r"Object Hash Code=0x([0-9a-f]+)", obj_ref)
-                    if hash_match:
-                        obj_hash = hash_match.group(1)
-                        # Try to find type in the rest of the string
-                        type_match = re.search(r"([\w\.]+)\s+on\s+", obj_ref)
-                        obj_type = type_match.group(1) if type_match else "FloatArray"
-                    else:
-                        # Last resort - try to find any type-like string
-                        type_match = re.search(r"([\w\.]+)\s*[@:]", obj_ref)
-                        obj_type = type_match.group(1) if type_match else "Unknown"
-                        obj_hash = self._extract_hash(obj_ref)
-            
-            # Clean up the type name
-            obj_type = obj_type.split('.')[-1]  # Take last part if it's a package path
+            # Extract hash and type
+            obj_hash = self._extract_hash(obj_ref)
+            obj_type = self._extract_type(obj_ref)
             
             if op_type == "ALLOC":
                 # Create or update memory object
@@ -279,6 +247,15 @@ class TornadoVisualizer:
                     for prev_graph in self.task_graphs:
                         if obj_hash in prev_graph.objects_produced:
                             task_graph.dependencies[prev_graph.graph_id].append(obj_hash)
+                else:
+                    # Create a new memory object if it doesn't exist
+                    self.memory_objects[obj_hash] = MemoryObject(
+                        object_id=obj_hash,
+                        object_type=obj_type,
+                        allocated_in_graph=task_graph.graph_id,
+                        current_status="On Device",
+                        allocation_op_index=len(task_graph.operations) - 1
+                    )
                     
             elif op_type == "LAUNCH" and operation.task_name:
                 # Track task
@@ -301,45 +278,67 @@ class TornadoVisualizer:
         if ':' in obj_ref:
             return obj_ref.split(':')[0]
             
-        # Look for the pattern *types.
-        type_match = re.search(r'types\.([\w\.]+)@', obj_ref)
-        if type_match:
-            return type_match.group(1)
+        # Extract the type part before the @ symbol
+        type_part = obj_ref.split('@')[0] if '@' in obj_ref else obj_ref
+        
+        # Look for the last meaningful component in the package path
+        components = type_part.split('.')
+        
+        # Special handling for known Tornado types
+        for component in reversed(components):
+            # Arrays (ByteArray, IntArray, FloatArray, etc)
+            if component.endswith('Array'):
+                return component
             
-        # Handle KernelContext and other patterns
-        match = re.search(r'\.(\w+)@', obj_ref)
-        if match:
-            # Get the last component before the @
-            return match.group(1)
-            
-        # If nothing else matches, return the original reference
-        return obj_ref
+            # Vectors (VectorFloat, VectorInt, etc)
+            if component.startswith('Vector'):
+                return component
+                
+            # Matrices (Matrix2DFloat, Matrix3DInt, etc)
+            if component.startswith('Matrix'):
+                return component
+                
+            # Tensors (TensorInt32, TensorFP32, etc)
+            if component.startswith('Tensor'):
+                return component
+                
+            # KernelContext and other special types
+            if component in ['KernelContext', 'TornadoCollectionInterface', 'TornadoMatrixInterface']:
+                return component
+        
+        # If no specific type is found, return the last component
+        return components[-1]
     
     def _format_object_ref(self, obj_ref: str) -> str:
         """Format object reference to show only essential information"""
-        # Handle format with colon (e.g. rmsnorm:@hash)
-        if ':' in obj_ref:
-            parts = obj_ref.split(':')
-            type_name = parts[0]
-            hash_part = parts[1].replace('@', '')  # Remove any @ if present
-            return f"{type_name}@{hash_part[:8]}"
-            
-        # Handle format with @ (e.g. uk.ac.manchester.tornado.api.types.arrays.FloatArray@hash)
-        match = re.search(r"([\w\.]+)@([0-9a-f]+)", obj_ref)
-        if match:
-            full_type = match.group(1)
-            hash_part = match.group(2)
-            # If it has dots, process as package path
-            if '.' in full_type:
-                parts = full_type.split('.')
-                meaningful_parts = [p for p in parts if p not in ['uk', 'ac', 'manchester', 'tornado', 'api', 'types']]
-                type_name = meaningful_parts[-1] if meaningful_parts else full_type
-            else:
-                type_name = full_type
-            return f"{type_name}@{hash_part[:8]}"
-            
-        return obj_ref  # Return as is if no pattern matches
+        # Extract hash and type
+        obj_hash = self._extract_hash(obj_ref)
+        obj_type = self._extract_type(obj_ref)
+        return f"{obj_type}@{obj_hash[:8]}"
     
+    def _find_object_type(self, obj_hash: str, graph: TaskGraph, dep_graph_id: str) -> str:
+        """Helper method to find object type from various sources"""
+        # Try memory objects first
+        if obj_hash in self.memory_objects:
+            obj = self.memory_objects[obj_hash]
+            return self._extract_type(obj.object_type)
+        
+        # Try current graph operations
+        for op in graph.operations:
+            for obj_ref in op.objects:
+                if self._extract_hash(obj_ref) == obj_hash:
+                    return self._extract_type(obj_ref)
+        
+        # Try source graph operations
+        source_graph = next((g for g in self.task_graphs if g.graph_id == dep_graph_id), None)
+        if source_graph:
+            for op in source_graph.operations:
+                for obj_ref in op.objects:
+                    if self._extract_hash(obj_ref) == obj_hash:
+                        return self._extract_type(obj_ref)
+        
+        return "Unknown"
+
     def _build_dependencies(self) -> None:
         """Build dependencies between task graphs based on object usage"""
         # Create nodes for each task graph
@@ -351,23 +350,17 @@ class TornadoVisualizer:
         
         # Create edges for dependencies
         for graph in self.task_graphs:
-            for producer_graph, objects in graph.dependencies.items():
-                # Format object references for edge labels
-                formatted_objects = []
-                for obj_hash in objects:
-                    if obj_hash in self.memory_objects:
-                        obj = self.memory_objects[obj_hash]
-                        formatted_objects.append(f"{self._extract_type(obj.object_type)}@{obj_hash[:6]}")
-                    else:
-                        formatted_objects.append(f"Unknown@{obj_hash[:6]}")
-                
-                # Create a unique edge with objects as labels
-                self.dependency_graph.add_edge(
-                    producer_graph, 
-                    graph.graph_id, 
-                    objects=objects,
-                    label='\n'.join(sorted(formatted_objects))
-                )
+            for dep_graph_id, objects in graph.dependencies.items():
+                if objects:
+                    # Get object names and types
+                    obj_details = []
+                    for obj_hash in objects:
+                        obj_type = self._find_object_type(obj_hash, graph, dep_graph_id)
+                        obj_details.append(f"{obj_type}@{obj_hash[:6]}")
+                    
+                    # Add edge with all object names
+                    edge_label = '\n'.join(sorted(obj_details))
+                    self.dependency_graph.add_edge(dep_graph_id, graph.graph_id, label=edge_label)
     
     def visualize_dependency_graph_detailed(self) -> None:
         """Visualize task dependencies as a directed graph"""
@@ -398,7 +391,7 @@ class TornadoVisualizer:
                     color='#666666',
                     fontcolor='white',
                     fontname='Arial',
-                    fontsize='12',  # Increased from 10
+                    fontsize='12',
                     margin='0.15',
                     height='0.4',
                     width='1.8')
@@ -408,7 +401,7 @@ class TornadoVisualizer:
                     color='#666666',
                     fontcolor='white',
                     fontname='Arial',
-                    fontsize='11',  # Increased from 9
+                    fontsize='11',
                     penwidth='0.7')
             
             # Add nodes for each task graph
@@ -431,17 +424,11 @@ class TornadoVisualizer:
                         # Get object names and types
                         obj_details = []
                         for obj_hash in objects:
-                            if obj_hash in self.memory_objects:
-                                obj = self.memory_objects[obj_hash]
-                                # Extract type using the new pattern
-                                obj_type = self._extract_type(obj.object_type)
-                                # Format as TYPE@HASH
-                                obj_details.append(f"{obj_type}@{obj_hash[:6]}")
-                        
-                        # Always show all objects, sorted
-                        edge_label = '\\n'.join(sorted(obj_details)) if obj_details else obj_hash[:6]
+                            obj_type = self._find_object_type(obj_hash, graph, dep_graph_id)
+                            obj_details.append(f"{obj_type}@{obj_hash[:6]}")
                         
                         # Add edge with all object names
+                        edge_label = '\\n'.join(sorted(obj_details))
                         dot.edge(dep_graph_id, graph.graph_id, edge_label)
             
             # Add custom CSS for container
@@ -614,11 +601,19 @@ class TornadoVisualizer:
                                   "TRANSFER_DEVICE_TO_HOST_ALWAYS", "DEALLOC", "ON_DEVICE", "ON_DEVICE_BUFFER"]:
                     for obj_ref in op.objects:
                         obj_hash = self._extract_hash(obj_ref)
-                        obj_type = self._extract_type(obj_ref)
+                        if obj_hash in self.memory_objects:
+                            obj = self.memory_objects[obj_hash]
+                            obj_type = self._extract_type(obj.object_type)
+                            display_name = f"{obj_type}@{obj_hash[:8]}"
+                        else:
+                            # If not in memory_objects, extract type directly from reference
+                            obj_type = self._extract_type(obj_ref)
+                            display_name = f"{obj_type}@{obj_hash[:8]}"
+                            
                         operations.append({
                             "TaskGraph": graph.graph_id,
                             "Operation": op.operation,
-                            "Object": f"{obj_type}@{obj_hash[:8]}",
+                            "Object": display_name,
                             "ObjectType": obj_type,
                             "Size": op.size if hasattr(op, 'size') else 0,
                             "OperationIndex": current_index,
@@ -637,6 +632,12 @@ class TornadoVisualizer:
         if df.empty:
             return go.Figure()
             
+        # Sort objects by type and hash to ensure consistent ordering
+        if not df.empty:
+            df['SortKey'] = df['Object'].apply(lambda x: (x.split('@')[0], x.split('@')[1]))
+            df = df.sort_values('SortKey')
+            df = df.drop('SortKey', axis=1)
+        
         # Create a more sophisticated timeline
         fig = go.Figure()
         
@@ -1676,30 +1677,81 @@ def main():
                             st.markdown(f"- {task}")
                         
                         # Show dependencies with object details
+                        st.markdown("""
+                        <style>
+                        .dep-source {
+                            margin-top: 8px;
+                            margin-bottom: 4px;
+                            font-weight: bold;
+                        }
+                        .dep-type {
+                            margin-left: 20px;
+                            margin-top: 4px;
+                            margin-bottom: 4px;
+                            color: #E0E0E0;
+                        }
+                        .dep-hash {
+                            margin-left: 40px;
+                            font-family: monospace;
+                            color: #9ECBFF;
+                        }
+                        </style>
+                        """, unsafe_allow_html=True)
+                        
                         st.markdown("**Dependencies:**")
                         if selected.dependencies:
-                            for dep, objs in selected.dependencies.items():
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;* From {dep}:")
-                                # Group objects by type
-                                obj_by_type = {}
+                            # Group dependencies by source graph
+                            grouped_deps = defaultdict(list)
+                            for dep_graph, objs in selected.dependencies.items():
                                 for obj_hash in objs:
+                                    # Try to find the object type
+                                    obj_type = None
+                                    
+                                    # Check memory objects
                                     if obj_hash in visualizer.memory_objects:
                                         obj = visualizer.memory_objects[obj_hash]
                                         obj_type = visualizer._extract_type(obj.object_type)
-                                        if obj_type not in obj_by_type:
-                                            obj_by_type[obj_type] = []
-                                        obj_by_type[obj_type].append(obj_hash[:6])
-                                    else:
-                                        if "Unknown" not in obj_by_type:
-                                            obj_by_type["Unknown"] = []
-                                        obj_by_type["Unknown"].append(obj_hash[:6])
+                                    
+                                    # If not found, check operations in both graphs
+                                    if not obj_type:
+                                        # Check current graph
+                                        for op in selected.operations:
+                                            for obj_ref in op.objects:
+                                                if visualizer._extract_hash(obj_ref) == obj_hash:
+                                                    obj_type = visualizer._extract_type(obj_ref)
+                                                    break
+                                            if obj_type:
+                                                break
+                                        
+                                        # Check source graph if needed
+                                        if not obj_type:
+                                            source_graph = next((g for g in visualizer.task_graphs if g.graph_id == dep_graph), None)
+                                            if source_graph:
+                                                for op in source_graph.operations:
+                                                    for obj_ref in op.objects:
+                                                        if visualizer._extract_hash(obj_ref) == obj_hash:
+                                                            obj_type = visualizer._extract_type(obj_ref)
+                                                            break
+                                                    if obj_type:
+                                                        break
+                                    
+                                    # Add to grouped dependencies
+                                    obj_type = obj_type if obj_type else "Unknown"
+                                    grouped_deps[dep_graph].append((obj_type, obj_hash[:6]))
+                            
+                            # Display dependencies
+                            for dep_graph, obj_list in grouped_deps.items():
+                                st.markdown(f'<div class="dep-source">• From {dep_graph}</div>', unsafe_allow_html=True)
+                                by_type = defaultdict(list)
+                                for obj_type, hash_id in obj_list:
+                                    by_type[obj_type].append(hash_id)
                                 
-                                # Display grouped objects
-                                for i, (obj_type, hashes) in enumerate(sorted(obj_by_type.items()), 1):
+                                for i, (obj_type, hashes) in enumerate(sorted(by_type.items()), 1):
+                                    st.markdown(f'<div class="dep-type">{i}. {obj_type}</div>', unsafe_allow_html=True)
                                     for hash_id in sorted(hashes):
-                                        st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{i}) {obj_type}: @{hash_id}", unsafe_allow_html=True)
+                                        st.markdown(f'<div class="dep-hash">@{hash_id}</div>', unsafe_allow_html=True)
                         else:
-                            st.markdown("No dependencies")
+                            st.markdown('<div class="dep-type">No dependencies</div>', unsafe_allow_html=True)
                         
                         # Show bytecodes
                         st.subheader("Bytecode Operations")
@@ -1712,8 +1764,8 @@ def main():
                             for op in selected.operations
                         ])
                         st.dataframe(bytecode_df)
-                else:
-                    st.info("No task graphs found in the log file")
+                    else:
+                        st.info("No task graphs found in the log file")
         
         elif page == "Memory Analysis":
             st.header("Memory Analysis")
