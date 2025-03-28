@@ -1,0 +1,98 @@
+Interpreter instance running bytecodes for:  PTX -- NVIDIA GeForce RTX 3080 Running in thread:  main
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@25f38edc on  PTX -- NVIDIA GeForce RTX 3080 , size=20480, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@67d48005 on  PTX -- NVIDIA GeForce RTX 3080 , size=4096, batchSize=0
+bc:  TRANSFER_HOST_TO_DEVICE_ALWAYS  [0x25f38edc] uk.ac.manchester.tornado.api.types.arrays.FloatArray@25f38edc on  PTX -- NVIDIA GeForce RTX 3080 , size=20480, batchSize=0, offset=0 [event list=-1]
+bc:  TRANSFER_HOST_TO_DEVICE_ALWAYS  [0x67d48005] uk.ac.manchester.tornado.api.types.arrays.FloatArray@67d48005 on  PTX -- NVIDIA GeForce RTX 3080 , size=4096, batchSize=0, offset=0 [event list=-1]
+bc:  LAUNCH  task DataLoader.loadBatch - initializeDataBatch on PTX -- NVIDIA GeForce RTX 3080, numThreadBatch=0, offset=0 [event list=0]
+bc:  BARRIER  event-list 1
+bc:  END
+
+
+Interpreter instance running bytecodes for:  PTX -- NVIDIA GeForce RTX 3080 Running in thread:  main
+bc:  ALLOC uk.ac.manchester.tornado.api.KernelContext@3c9754d8 on  PTX -- NVIDIA GeForce RTX 3080 , size=128, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@19dfb72a on  PTX -- NVIDIA GeForce RTX 3080 , size=20480, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@17c1bced on  PTX -- NVIDIA GeForce RTX 3080 , size=128, batchSize=0
+bc:  ON_DEVICE_BUFFER [0x25f38edc] uk.ac.manchester.tornado.api.types.arrays.FloatArray@25f38edc on  PTX -- NVIDIA GeForce RTX 3080
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0x17c1bced] uk.ac.manchester.tornado.api.types.arrays.FloatArray@17c1bced on  PTX -- NVIDIA GeForce RTX 3080 , size=128, batchSize=0, offset=0 [event list=-1]
+bc:  LAUNCH  task Preprocessor.filterOutliers - removeNoiseFromBatch on PTX -- NVIDIA GeForce RTX 3080, numThreadBatch=0, offset=0 [event list=0]
+bc:  BARRIER  event-list 1
+bc:  END
+
+
+Interpreter instance running bytecodes for:  PTX -- NVIDIA GeForce RTX 3080 Running in thread:  main
+bc:  ALLOC uk.ac.manchester.tornado.api.KernelContext@1f36e637 on  PTX -- NVIDIA GeForce RTX 3080 , size=128, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@7cc9ce8 on  PTX -- NVIDIA GeForce RTX 3080 , size=20480, batchSize=0
+bc:  ON_DEVICE_BUFFER [0x19dfb72a] uk.ac.manchester.tornado.api.types.arrays.FloatArray@19dfb72a on  PTX -- NVIDIA GeForce RTX 3080
+bc:  ON_DEVICE_BUFFER [0x67d48005] uk.ac.manchester.tornado.api.types.arrays.FloatArray@67d48005 on  PTX -- NVIDIA GeForce RTX 3080
+bc:  LAUNCH  task Preprocessor.normalize - standardizeValues on PTX -- NVIDIA GeForce RTX 3080, numThreadBatch=0, offset=0 [event list=0]
+bc:  DEALLOC [0x1f36e637] uk.ac.manchester.tornado.api.KernelContext@1f36e637 [Status:  Persisted ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  BARRIER  event-list 1
+bc:  END
+
+
+Interpreter instance running bytecodes for:  PTX -- NVIDIA GeForce RTX 3080 Running in thread:  main
+bc:  ALLOC uk.ac.manchester.tornado.api.KernelContext@29b5cd00 on  PTX -- NVIDIA GeForce RTX 3080 , size=128, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@4e7dc304 on  PTX -- NVIDIA GeForce RTX 3080 , size=30720, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@6b0c2d26 on  PTX -- NVIDIA GeForce RTX 3080 , size=524288, batchSize=0
+bc:  ON_DEVICE_BUFFER [0x7cc9ce8] uk.ac.manchester.tornado.api.types.arrays.FloatArray@7cc9ce8 on  PTX -- NVIDIA GeForce RTX 3080
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0x6b0c2d26] uk.ac.manchester.tornado.api.types.arrays.FloatArray@6b0c2d26 on  PTX -- NVIDIA GeForce RTX 3080 , size=524288, batchSize=0, offset=0 [event list=-1]
+bc:  LAUNCH  task FeatureExtractor.extractFeatures - computeFeaturesFromInput on PTX -- NVIDIA GeForce RTX 3080, numThreadBatch=0, offset=0 [event list=0]
+bc:  DEALLOC [0x29b5cd00] uk.ac.manchester.tornado.api.KernelContext@29b5cd00 [Status:  Persisted ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  DEALLOC [0x6b0c2d26] uk.ac.manchester.tornado.api.types.arrays.FloatArray@6b0c2d26 [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  BARRIER  event-list 1
+bc:  END
+
+
+Interpreter instance running bytecodes for:  PTX -- NVIDIA GeForce RTX 3080 Running in thread:  main
+bc:  ALLOC uk.ac.manchester.tornado.api.KernelContext@51dcb805 on  PTX -- NVIDIA GeForce RTX 3080 , size=128, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@78a773fd on  PTX -- NVIDIA GeForce RTX 3080 , size=8192, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@59662a0b on  PTX -- NVIDIA GeForce RTX 3080 , size=1048576, batchSize=0
+bc:  ON_DEVICE_BUFFER [0x4e7dc304] uk.ac.manchester.tornado.api.types.arrays.FloatArray@4e7dc304 on  PTX -- NVIDIA GeForce RTX 3080
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0x59662a0b] uk.ac.manchester.tornado.api.types.arrays.FloatArray@59662a0b on  PTX -- NVIDIA GeForce RTX 3080 , size=1048576, batchSize=0, offset=0 [event list=-1]
+bc:  LAUNCH  task ModelInference.forwardPass - computeNeuralNetworkLayer1 on PTX -- NVIDIA GeForce RTX 3080, numThreadBatch=0, offset=0 [event list=0]
+bc:  DEALLOC [0x51dcb805] uk.ac.manchester.tornado.api.KernelContext@51dcb805 [Status:  Persisted ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  DEALLOC [0x59662a0b] uk.ac.manchester.tornado.api.types.arrays.FloatArray@59662a0b [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  BARRIER  event-list 1
+bc:  END
+
+
+Interpreter instance running bytecodes for:  PTX -- NVIDIA GeForce RTX 3080 Running in thread:  main
+bc:  ALLOC uk.ac.manchester.tornado.api.KernelContext@3ecf72fd on  PTX -- NVIDIA GeForce RTX 3080 , size=128, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@483bf400 on  PTX -- NVIDIA GeForce RTX 3080 , size=2048, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@1de76cc7 on  PTX -- NVIDIA GeForce RTX 3080 , size=262144, batchSize=0
+bc:  ON_DEVICE_BUFFER [0x78a773fd] uk.ac.manchester.tornado.api.types.arrays.FloatArray@78a773fd on  PTX -- NVIDIA GeForce RTX 3080
+bc:  TRANSFER_HOST_TO_DEVICE_ONCE  [Object Hash Code=0x1de76cc7] uk.ac.manchester.tornado.api.types.arrays.FloatArray@1de76cc7 on  PTX -- NVIDIA GeForce RTX 3080 , size=262144, batchSize=0, offset=0 [event list=-1]
+bc:  LAUNCH  task ModelInference.forwardPass - computeNeuralNetworkLayer2 on PTX -- NVIDIA GeForce RTX 3080, numThreadBatch=0, offset=0 [event list=0]
+bc:  DEALLOC [0x3ecf72fd] uk.ac.manchester.tornado.api.KernelContext@3ecf72fd [Status:  Persisted ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  DEALLOC [0x1de76cc7] uk.ac.manchester.tornado.api.types.arrays.FloatArray@1de76cc7 [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  BARRIER  event-list 1
+bc:  END
+
+
+Interpreter instance running bytecodes for:  PTX -- NVIDIA GeForce RTX 3080 Running in thread:  main
+bc:  ALLOC uk.ac.manchester.tornado.api.KernelContext@7671cb68 on  PTX -- NVIDIA GeForce RTX 3080 , size=128, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@56ac3a89 on  PTX -- NVIDIA GeForce RTX 3080 , size=4096, batchSize=0
+bc:  ON_DEVICE_BUFFER [0x483bf400] uk.ac.manchester.tornado.api.types.arrays.FloatArray@483bf400 on  PTX -- NVIDIA GeForce RTX 3080
+bc:  LAUNCH  task ResultProcessor.finalize - generateOutputProbabilities on PTX -- NVIDIA GeForce RTX 3080, numThreadBatch=0, offset=0 [event list=0]
+bc:  BARRIER  event-list 1
+bc:  END
+
+
+Interpreter instance running bytecodes for:  PTX -- NVIDIA GeForce RTX 3080 Running in thread:  main
+bc:  ALLOC uk.ac.manchester.tornado.api.KernelContext@16267862 on  PTX -- NVIDIA GeForce RTX 3080 , size=128, batchSize=0
+bc:  ALLOC uk.ac.manchester.tornado.api.types.arrays.FloatArray@453da22c on  PTX -- NVIDIA GeForce RTX 3080 , size=10, batchSize=0
+bc:  ON_DEVICE_BUFFER [0x56ac3a89] uk.ac.manchester.tornado.api.types.arrays.FloatArray@56ac3a89 on  PTX -- NVIDIA GeForce RTX 3080
+bc:  ON_DEVICE_BUFFER [0x67d48005] uk.ac.manchester.tornado.api.types.arrays.FloatArray@67d48005 on  PTX -- NVIDIA GeForce RTX 3080
+bc:  LAUNCH  task ResultAggregator.summarize - aggregateAndClassify on PTX -- NVIDIA GeForce RTX 3080, numThreadBatch=0, offset=0 [event list=0]
+bc:  TRANSFER_DEVICE_TO_HOST [0x453da22c] uk.ac.manchester.tornado.api.types.arrays.FloatArray@453da22c on  PTX -- NVIDIA GeForce RTX 3080 , size=10, batchSize=0, offset=0 [event list=1]
+bc:  DEALLOC [0x16267862] uk.ac.manchester.tornado.api.KernelContext@16267862 [Status:  Persisted ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  DEALLOC [0x25f38edc] uk.ac.manchester.tornado.api.types.arrays.FloatArray@25f38edc [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  DEALLOC [0x19dfb72a] uk.ac.manchester.tornado.api.types.arrays.FloatArray@19dfb72a [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  DEALLOC [0x7cc9ce8] uk.ac.manchester.tornado.api.types.arrays.FloatArray@7cc9ce8 [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  DEALLOC [0x4e7dc304] uk.ac.manchester.tornado.api.types.arrays.FloatArray@4e7dc304 [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  DEALLOC [0x78a773fd] uk.ac.manchester.tornado.api.types.arrays.FloatArray@78a773fd [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  DEALLOC [0x483bf400] uk.ac.manchester.tornado.api.types.arrays.FloatArray@483bf400 [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  DEALLOC [0x56ac3a89] uk.ac.manchester.tornado.api.types.arrays.FloatArray@56ac3a89 [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  DEALLOC [0x67d48005] uk.ac.manchester.tornado.api.types.arrays.FloatArray@67d48005 [Status:  Freed ] on  PTX -- NVIDIA GeForce RTX 3080
+bc:  BARRIER  event-list 2
+bc:  END
