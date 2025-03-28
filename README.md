@@ -66,21 +66,15 @@ The visualization shows:
 
 ### Prerequisites
 - Python 3.8 or higher
-- pip (Python package installer)
 
 ### Setup
 
-1. Clone the TornadoVM repository:
-```bash
-git clone https://github.com/beehive-lab/TornadoVM.git
-```
-
-2. Install dependencies:
+1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Run the analyzer:
+2. Run the analyzer:
 ```bash
 streamlit run tornado-visualizer-fixed.py
 ```
