@@ -856,11 +856,11 @@ class TornadoVisualizer:
             if event_type.startswith("Deallocated"):
                 color = "#ef4444"  # Red
                 symbol = "x"
-                size = 15
+                size = 20  # Increased marker size
             else:
                 color = color_map.get(event_type, "gray")
                 symbol = "circle"
-                size = 15
+                size = 20  # Increased marker size
                 
             fig.add_trace(go.Scatter(
                 x=[row["TaskGraph"]],
@@ -870,7 +870,7 @@ class TornadoVisualizer:
                     color=color, 
                     size=size, 
                     symbol=symbol,
-                    line=dict(width=1, color='black')
+                    line=dict(width=2, color='black')  # Increased line width
                 ),
                 name=event_type,
                 text=f"<b>{event_type}</b> in {row['TaskGraph']}<br>Size: {row['Size']:,} bytes",
@@ -881,37 +881,41 @@ class TornadoVisualizer:
         fig.update_layout(
             title={
                 'text': f"Object Flow: {short_id}",
-                'y':0.9,
+                'y':0.95,
                 'x':0.5,
                 'xanchor': 'center',
                 'yanchor': 'top',
-                'font': {'size': 20}  # Increased from 18
+                'font': {'size': 20}
             },
             xaxis_title="Task Graph",
             xaxis=dict(
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)',
-                tickangle=-45  # Rotate labels for better readability
+                tickangle=-45,  # Rotate labels for better readability
+                tickfont=dict(size=14),  # Increased tick font size
+                tickmode='array',  # Force all task graph names to show
+                ticktext=df["TaskGraph"].unique(),
+                tickvals=df["TaskGraph"].unique()
             ),
             yaxis=dict(
                 showticklabels=False,
                 zeroline=False,
                 showgrid=False,
-                range=[0.5, 1.8]
+                range=[0.5, 1.5]  # Adjusted range for better marker visibility
             ),
             hovermode="closest",
-            height=300,
-            width=1000,
+            height=200,  # Reduced height since we only have one line
+            width=1200,  # Increased width for better spacing
             template="plotly_white",
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
-            margin=dict(l=50, r=50, t=80, b=100),  # Increased bottom margin for rotated labels
+            margin=dict(l=50, r=150, t=80, b=120),  # Increased margins, especially bottom and right
             showlegend=True,
             legend=dict(
                 yanchor="top",
                 y=0.99,
                 xanchor="right",
-                x=1,
+                x=1.1,  # Moved legend further right
                 bgcolor='rgba(0,0,0,0)',
                 font=dict(size=14)
             ),
