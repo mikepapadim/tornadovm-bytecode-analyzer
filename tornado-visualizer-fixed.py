@@ -712,7 +712,7 @@ class TornadoVisualizer:
         # Update layout
         fig.update_layout(
             title={
-                'text': "Memory Operations Timeline",
+                'text': "Memory Objects Lifecycle",
                 'y':0.95,
                 'x':0.5,
                 'xanchor': 'center',
@@ -842,10 +842,10 @@ class TornadoVisualizer:
         
         # Add line connecting events
         fig.add_trace(go.Scatter(
-            x=df["GlobalIndex"],
+            x=df["TaskGraph"],
             y=[1] * len(df),
             mode="lines",
-            line=dict(color="rgba(0,0,0,0.3)", width=3),
+            line=dict(color="rgba(255,255,255,0.3)", width=3),
             hoverinfo="none",
             showlegend=False
         ))
@@ -863,7 +863,7 @@ class TornadoVisualizer:
                 size = 15
                 
             fig.add_trace(go.Scatter(
-                x=[row["GlobalIndex"]],
+                x=[row["TaskGraph"]],
                 y=[1],
                 mode="markers",
                 marker=dict(
@@ -887,7 +887,12 @@ class TornadoVisualizer:
                 'yanchor': 'top',
                 'font': {'size': 20}  # Increased from 18
             },
-            xaxis_title="Operation Sequence",
+            xaxis_title="Task Graph",
+            xaxis=dict(
+                showgrid=True,
+                gridcolor='rgba(128,128,128,0.2)',
+                tickangle=-45  # Rotate labels for better readability
+            ),
             yaxis=dict(
                 showticklabels=False,
                 zeroline=False,
@@ -898,9 +903,22 @@ class TornadoVisualizer:
             height=300,
             width=1000,
             template="plotly_white",
-            margin=dict(l=50, r=50, t=80, b=50),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=50, r=50, t=80, b=100),  # Increased bottom margin for rotated labels
             showlegend=True,
-            font=dict(size=18)  # Added global font size
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="right",
+                x=1,
+                bgcolor='rgba(0,0,0,0)',
+                font=dict(size=14)
+            ),
+            font=dict(
+                color='white',
+                size=14
+            )
         )
         
         return fig
@@ -1697,7 +1715,7 @@ def main():
             st.header("Memory Analysis")
             
             # Memory timeline
-            st.subheader("Memory Operations Timeline")
+            st.subheader("Memory Objects Lifecycle")
             
             # Simplify to a basic chart if the interactive one fails
             try:
