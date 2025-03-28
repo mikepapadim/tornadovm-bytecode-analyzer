@@ -38,6 +38,24 @@ The tool provides detailed memory operation analysis:
 - Operation distribution analysis
 - Task-specific operation breakdowns
 
+## Task Graph Analysis
+
+The Task Graph Analysis view provides insights into the execution flow and memory operations of your TornadoVM application:
+
+- **Task Graph Dependencies**: Visualize how different task graphs depend on each other and the data flow between them
+- **Memory Timeline**: Track memory allocations, deallocations, and overall memory usage across task graphs
+- **Task Details**: Examine individual tasks, their operations, and memory patterns
+
+<p align="center">
+  <img src="docs/images/task_graph_analysis.png" width="800" alt="Task Graph Analysis View">
+</p>
+
+The visualization shows:
+- Vertical lines separating different task graphs
+- Memory usage over time (blue line)
+- Allocations (green dots) and deallocations (red X)
+- Task boundaries and execution sequence
+
 ## Installation
 
 ### Prerequisites
@@ -49,7 +67,6 @@ The tool provides detailed memory operation analysis:
 1. Clone the TornadoVM repository:
 ```bash
 git clone https://github.com/beehive-lab/TornadoVM.git
-cd TornadoVM/tools/bytecode-analyzer
 ```
 
 2. Install dependencies:
@@ -61,17 +78,6 @@ pip install -r requirements.txt
 ```bash
 streamlit run tornado-visualizer-fixed.py
 ```
-
-4. Upload your TornadoVM bytecode log file through the web interface
-
-## Requirements
-
-- Python 3.8+
-- Streamlit
-- Plotly
-- Pandas
-- Graphviz
-- NetworkX
 
 ## Contributing
 
