@@ -5,6 +5,8 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, asdict
 import re
 import plotly.graph_objects as go
+import pandas as pd
+import plotly.express as px
 
 @dataclass
 class CodeBlock:
@@ -40,19 +42,28 @@ class ReactVisualizer:
     def __init__(self):
         self.java_patterns = {}
         self.target_patterns = {}
+        self.target_type = "ptx"  # Default to PTX
+        self.mapping_stats = {
+            'total_mappings': 0,
+            'confidence': {'high': 0, 'medium': 0, 'low': 0},
+            'by_type': {},
+            'by_subtype': {}
+        }
     
     def display_code_transition(self, java_blocks: List[CodeBlock],
                               target_blocks: List[CodeBlock],
                               mappings: List[CodeMapping]) -> None:
         """Display code transition visualization using Streamlit components"""
+        # Set target type from the first block's language
+        self.target_type = target_blocks[0].language if target_blocks else "ptx"
+        
         # Combine all Java code and target code
         java_code = self._combine_blocks(java_blocks)
         target_code = self._combine_blocks(target_blocks)
-        target_type = target_blocks[0].language if target_blocks else "ptx"
         
         # Find patterns in both code bases
         self.java_patterns = self._find_java_patterns(java_code)
-        if target_type.lower() == 'ptx':
+        if self.target_type.lower() == 'ptx':
             self.target_patterns = self._find_ptx_patterns(target_code)
         else:
             self.target_patterns = self._find_opencl_patterns(target_code)
@@ -61,13 +72,13 @@ class ReactVisualizer:
         semantic_mappings = self._create_semantic_mappings()
         
         # Create the visualization HTML
-        html = self._create_visualization_html(java_code, target_code, target_type, semantic_mappings)
+        html = self._create_visualization_html(java_code, target_code, self.target_type, semantic_mappings)
         
         # Display using Streamlit components
         components.html(html, height=800, scrolling=True)
         
         # Display mapping statistics
-        self._display_mapping_stats(semantic_mappings)
+        self._display_mapping_stats()
     
     def _combine_blocks(self, blocks: List[CodeBlock]) -> str:
         """Combine code blocks into a single string"""
@@ -127,157 +138,332 @@ class ReactVisualizer:
         return patterns
     
     def _find_ptx_patterns(self, code: str) -> Dict[str, List[Dict]]:
-        """Find patterns in PTX code"""
+        """Find detailed patterns in PTX code with enhanced DFT-specific detection"""
         patterns = {
-            'memory_operations': [],
+            'global_memory': [],
+            'shared_memory': [],
+            'registers': [],
             'math_operations': [],
-            'thread_setup': [],
-            'loop_structures': []
+            'control_flow': [],
+            'thread_operations': [],
+            'dft_specific': []  # New category for DFT-specific patterns
         }
         
         lines = code.split('\n')
         for i, line in enumerate(lines, 1):
-            # Memory operations
-            if 'ld.global' in line or 'st.global' in line:
-                patterns['memory_operations'].append({
+            # Global memory operations with DFT context
+            if 'ld.global' in line:
+                patterns['global_memory'].append({
                     'line': i,
                     'code': line.strip(),
-                    'type': 'load' if 'ld.global' in line else 'store'
+                    'type': 'load',
+                    'context': 'dft_input' if 'rud1' in line or 'rud2' in line else 'dft_output'
+                })
+            elif 'st.global' in line:
+                patterns['global_memory'].append({
+                    'line': i,
+                    'code': line.strip(),
+                    'type': 'store',
+                    'context': 'dft_output'
                 })
             
-            # Math operations
-            if any(op in line for op in ['sin.approx', 'cos.approx', 'mul.rn', 'add.rn']):
-                match = re.search(r'(sin\.approx|cos\.approx|mul\.rn|add\.rn)', line)
-                if match:
+            # Register declarations and operations with type tracking
+            if '.reg' in line:
+                reg_type = re.search(r'\.reg\s+\.(\w+)', line)
+                if reg_type:
+                    patterns['registers'].append({
+                        'line': i,
+                        'code': line.strip(),
+                        'type': 'declaration',
+                        'reg_type': reg_type.group(1)
+                    })
+            elif re.search(r'mov\.\w+', line):
+                patterns['registers'].append({
+                    'line': i,
+                    'code': line.strip(),
+                    'type': 'move',
+                    'reg_type': re.search(r'mov\.(\w+)', line).group(1)
+                })
+            
+            # Math operations with precision tracking
+            if any(op in line for op in ['sin.approx', 'cos.approx', 'mul.rn', 'add.rn', 'div.full', 'mad.rn']):
+                op_match = re.search(r'(sin\.approx|cos\.approx|mul\.rn|add\.rn|div\.full|mad\.rn)', line)
+                if op_match:
                     patterns['math_operations'].append({
                         'line': i,
                         'code': line.strip(),
-                        'operation': match.group(1)
+                        'operation': op_match.group(1),
+                        'precision': 'approx' if 'approx' in line else 'rn' if 'rn' in line else 'full'
                     })
             
-            # Thread setup
-            if any(term in line for term in ['%tid', '%ntid', 'mov.u32']):
-                patterns['thread_setup'].append({
+            # Control flow with loop detection
+            if any(term in line for term in ['bra', 'setp', 'ret']):
+                ctrl_type = 'branch' if 'bra' in line else 'predicate' if 'setp' in line else 'return'
+                patterns['control_flow'].append({
                     'line': i,
-                    'code': line.strip()
+                    'code': line.strip(),
+                    'type': ctrl_type,
+                    'is_loop': 'LOOP_COND' in line
                 })
             
-            # Loop structures
-            if any(term in line for term in ['@!P', 'bra', 'setp']):
-                patterns['loop_structures'].append({
+            # Thread operations with dimension tracking
+            if any(term in line for term in ['%tid', '%ntid', '%ctaid']):
+                dim_match = re.search(r'%(\w+)\.(\w+)', line)
+                if dim_match:
+                    patterns['thread_operations'].append({
+                        'line': i,
+                        'code': line.strip(),
+                        'type': dim_match.group(1),
+                        'dimension': dim_match.group(2)
+                    })
+            
+            # DFT-specific patterns
+            if any(term in line for term in ['mul.wide.u32', 'cvt.s32.u64', 'mad.lo.s32']):
+                patterns['dft_specific'].append({
                     'line': i,
-                    'code': line.strip()
+                    'code': line.strip(),
+                    'type': 'thread_indexing',
+                    'operation': re.search(r'(\w+\.\w+)', line).group(1)
+                })
+            elif any(term in line for term in ['cvt.rn.f32.s32', 'mul.rn.f32', 'div.full.f32']):
+                patterns['dft_specific'].append({
+                    'line': i,
+                    'code': line.strip(),
+                    'type': 'angle_calculation',
+                    'operation': re.search(r'(\w+\.\w+)', line).group(1)
                 })
         
         return patterns
     
     def _find_opencl_patterns(self, code: str) -> Dict[str, List[Dict]]:
-        """Find patterns in OpenCL code"""
+        """Find patterns in OpenCL code with enhanced GPU-specific features"""
         patterns = {
-            'memory_operations': [],
+            'global_memory': [],
+            'local_memory': [],
+            'private_memory': [],
             'math_operations': [],
             'thread_setup': [],
-            'loop_structures': []
+            'loop_structures': [],
+            'barriers': [],
+            'atomic_operations': [],
+            'vector_operations': []
         }
         
         lines = code.split('\n')
         for i, line in enumerate(lines, 1):
-            # Memory operations
+            # Global memory operations
             if '__global' in line:
-                patterns['memory_operations'].append({
+                is_store = '=' in line and line.index('=') > line.index('__global')
+                patterns['global_memory'].append({
                     'line': i,
                     'code': line.strip(),
-                    'type': 'store' if '=' in line else 'load'
+                    'type': 'store' if is_store else 'load',
+                    'vector_width': self._detect_vector_width(line)
                 })
             
-            # Math operations
-            if any(op in line for op in ['native_sin', 'native_cos', 'native_sqrt']):
-                match = re.search(r'(native_\w+)', line)
+            # Local memory operations
+            if '__local' in line:
+                is_store = '=' in line and line.index('=') > line.index('__local')
+                patterns['local_memory'].append({
+                    'line': i,
+                    'code': line.strip(),
+                    'type': 'store' if is_store else 'load'
+                })
+            
+            # Private memory operations
+            if '__private' in line or 'auto' in line:
+                patterns['private_memory'].append({
+                    'line': i,
+                    'code': line.strip(),
+                    'type': 'declaration' if 'auto' in line else 'operation'
+                })
+            
+            # Math operations with extended support
+            math_ops = ['native_', 'half_', 'fast_', 'fma', 'mad']
+            if any(op in line for op in math_ops):
+                match = re.search(r'((?:native|half|fast)_\w+|fma|mad)', line)
                 if match:
                     patterns['math_operations'].append({
+                        'line': i,
+                        'code': line.strip(),
+                        'operation': match.group(1),
+                        'precision': 'fast' if 'native_' in line else 'precise'
+                    })
+            
+            # Thread/work-item setup
+            if any(term in line for term in ['get_global_id', 'get_local_id', 'get_group_id']):
+                match = re.search(r'get_(\w+)_id\s*\(\s*(\d+)\s*\)', line)
+                if match:
+                    patterns['thread_setup'].append({
+                        'line': i,
+                        'code': line.strip(),
+                        'scope': match.group(1),
+                        'dimension': match.group(2)
+                    })
+            
+            # Loop structures with stride detection
+            if 'for(' in line or 'while(' in line:
+                stride_match = re.search(r'(\+\+|--|\+=\s*\d+)', line)
+                patterns['loop_structures'].append({
+                    'line': i,
+                    'code': line.strip(),
+                    'type': 'for' if 'for(' in line else 'while',
+                    'stride': stride_match.group(1) if stride_match else None
+                })
+            
+            # Barrier operations
+            if 'barrier(' in line:
+                match = re.search(r'barrier\s*\(\s*(CLK_[^)]+)\s*\)', line)
+                if match:
+                    patterns['barriers'].append({
+                        'line': i,
+                        'code': line.strip(),
+                        'scope': match.group(1)
+                    })
+            
+            # Atomic operations
+            if 'atomic_' in line:
+                match = re.search(r'atomic_(\w+)', line)
+                if match:
+                    patterns['atomic_operations'].append({
                         'line': i,
                         'code': line.strip(),
                         'operation': match.group(1)
                     })
             
-            # Thread setup
-            if 'get_global_id' in line or 'get_local_id' in line:
-                patterns['thread_setup'].append({
+            # Vector operations
+            vector_types = ['float2', 'float4', 'float8', 'float16', 
+                          'int2', 'int4', 'int8', 'int16']
+            if any(vtype in line for vtype in vector_types):
+                patterns['vector_operations'].append({
                     'line': i,
-                    'code': line.strip()
-                })
-            
-            # Loop structures
-            if 'for(' in line or 'while(' in line:
-                patterns['loop_structures'].append({
-                    'line': i,
-                    'code': line.strip()
+                    'code': line.strip(),
+                    'vector_type': next(vt for vt in vector_types if vt in line)
                 })
         
         return patterns
     
+    def _detect_vector_width(self, line: str) -> int:
+        """Detect vector width from OpenCL code line"""
+        vector_types = {
+            'float2': 2, 'float4': 4, 'float8': 8, 'float16': 16,
+            'int2': 2, 'int4': 4, 'int8': 8, 'int16': 16
+        }
+        for vtype, width in vector_types.items():
+            if vtype in line:
+                return width
+        return 1
+    
     def _create_semantic_mappings(self) -> List[Dict]:
-        """Create semantic mappings between Java and target code patterns"""
+        """Create detailed semantic mappings with DFT-specific patterns"""
         mappings = []
         
-        # Map array access to memory operations
-        for java_access in self.java_patterns['array_access']:
-            for target_mem in self.target_patterns['memory_operations']:
-                if java_access['type'] == 'get' and target_mem['type'] == 'load':
-                    mappings.append({
-                        'source_line': java_access['line'],
-                        'target_line': target_mem['line'],
-                        'type': 'array_access',
-                        'description': 'Array get operation maps to memory load'
-                    })
-                elif java_access['type'] == 'set' and target_mem['type'] == 'store':
-                    mappings.append({
-                        'source_line': java_access['line'],
-                        'target_line': target_mem['line'],
-                        'type': 'array_access',
-                        'description': 'Array set operation maps to memory store'
-                    })
+        # Map array access to memory operations with DFT context
+        for java_access in self.java_patterns.get('array_access', []):
+            target_pattern_name = 'global_memory'
+            target_access_list = self.target_patterns.get(target_pattern_name, [])
+            
+            # Map .get() to load operations with DFT context
+            if java_access['type'] == 'get':
+                for target_access in target_access_list:
+                    if target_access['type'] == 'load':
+                        context = target_access.get('context', '')
+                        mappings.append({
+                            'source_lines': [java_access['line']],
+                            'target_lines': [target_access['line']],
+                            'type': 'array_access',
+                            'subtype': f"get_to_load_{context}",
+                            'description': f"Java array get → {self.target_type.upper()} memory load ({context})",
+                            'confidence': 0.85
+                        })
+            
+            # Map .set() to store operations with DFT context
+            elif java_access['type'] == 'set':
+                for target_access in target_access_list:
+                    if target_access['type'] == 'store':
+                        context = target_access.get('context', '')
+                        mappings.append({
+                            'source_lines': [java_access['line']],
+                            'target_lines': [target_access['line']],
+                            'type': 'array_access',
+                            'subtype': f"set_to_store_{context}",
+                            'description': f"Java array set → {self.target_type.upper()} memory store ({context})",
+                            'confidence': 0.85
+                        })
         
-        # Map math operations
-        for java_math in self.java_patterns['math_operations']:
-            for target_math in self.target_patterns['math_operations']:
-                if java_math['operation'].lower() in target_math['operation'].lower():
+        # Map math operations with precision tracking
+        for java_math in self.java_patterns.get('math_operations', []):
+            target_math_list = self.target_patterns.get('math_operations', [])
+            
+            java_op = java_math['operation'].lower()
+            for target_math in target_math_list:
+                target_op = target_math.get('operation', '').lower()
+                precision = target_math.get('precision', '')
+                
+                # Match similar math operations with precision
+                if (java_op in target_op) or (java_op == 'sin' and 'sin' in target_op) or (java_op == 'cos' and 'cos' in target_op):
                     mappings.append({
-                        'source_line': java_math['line'],
-                        'target_line': target_math['line'],
+                        'source_lines': [java_math['line']],
+                        'target_lines': [target_math['line']],
                         'type': 'math_operation',
-                        'description': f"Math operation {java_math['operation']} maps to {target_math['operation']}"
+                        'subtype': f"{java_op}_to_{target_op.split('.')[0]}_{precision}",
+                        'description': f"TornadoMath.{java_op} → {self.target_type.upper()} {target_op} ({precision})",
+                        'confidence': 0.9
                     })
         
-        # Map parallel loops to thread setup
-        for java_loop in self.java_patterns['parallel_loops']:
-            for target_thread in self.target_patterns['thread_setup']:
-                mappings.append({
-                    'source_line': java_loop['line'],
-                    'target_line': target_thread['line'],
-                    'type': 'parallel_loop',
-                    'description': 'Parallel loop maps to thread setup'
-                })
+        # Map DFT-specific patterns
+        dft_patterns = self.target_patterns.get('dft_specific', [])
+        for dft_pattern in dft_patterns:
+            if dft_pattern['type'] == 'thread_indexing':
+                # Map to parallel loop setup
+                for java_loop in self.java_patterns.get('parallel_loops', []):
+                    mappings.append({
+                        'source_lines': [java_loop['line']],
+                        'target_lines': [dft_pattern['line']],
+                        'type': 'dft_threading',
+                        'subtype': 'parallel_to_thread_index',
+                        'description': f"@Parallel loop → {self.target_type.upper()} thread indexing",
+                        'confidence': 0.8
+                    })
+            elif dft_pattern['type'] == 'angle_calculation':
+                # Map to math operations in Java
+                for java_math in self.java_patterns.get('math_operations', []):
+                    if 'angle' in java_math.get('code', '').lower():
+                        mappings.append({
+                            'source_lines': [java_math['line']],
+                            'target_lines': [dft_pattern['line']],
+                            'type': 'dft_math',
+                            'subtype': 'angle_calculation',
+                            'description': f"DFT angle calculation → {self.target_type.upper()} math operations",
+                            'confidence': 0.85
+                        })
         
-        # Map sequential loops
-        for java_loop in self.java_patterns['sequential_loops']:
-            for target_loop in self.target_patterns['loop_structures']:
-                mappings.append({
-                    'source_line': java_loop['line'],
-                    'target_line': target_loop['line'],
-                    'type': 'sequential_loop',
-                    'description': 'Sequential loop maps to loop structure'
-                })
+        # Map control flow with loop detection
+        for java_loop in self.java_patterns.get('sequential_loops', []):
+            target_ctrl_list = self.target_patterns.get('control_flow', [])
+            
+            for target_ctrl in target_ctrl_list:
+                if target_ctrl.get('is_loop'):
+                    mappings.append({
+                        'source_lines': [java_loop['line']],
+                        'target_lines': [target_ctrl['line']],
+                        'type': 'loop_structure',
+                        'subtype': 'sequential_to_ptx_loop',
+                        'description': f"Sequential loop → {self.target_type.upper()} loop structure",
+                        'confidence': 0.7
+                    })
         
         return mappings
     
     def _create_visualization_html(self, java_code: str, target_code: str, 
                                  target_type: str, mappings: List[Dict]) -> str:
-        """Create HTML for the visualization"""
-        # Create unique ID for this visualization
+        """Create HTML for the visualization with enhanced styling"""
         viz_id = f"viz_{hash(java_code + target_code)}"
         
-        # Create the HTML template with the visualization
+        # Add syntax highlighting for Java code
+        java_highlighted = self._highlight_java_code(java_code)
+        target_highlighted = self._highlight_target_code(target_code, target_type)
+        
         html = f"""
         <div id="{viz_id}" class="code-viz">
             <style>
@@ -285,62 +471,130 @@ class ReactVisualizer:
                     display: flex;
                     flex-direction: column;
                     height: 100%;
-                    font-family: monospace;
+                    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+                    font-size: 14px;
+                    line-height: 1.5;
                 }}
                 .code-panels {{
                     display: flex;
                     gap: 1rem;
-                    height: 600px;
+                    height: 700px;
                 }}
                 .code-panel {{
                     flex: 1;
                     display: flex;
                     flex-direction: column;
-                    border: 1px solid #ccc;
-                    border-radius: 4px;
+                    border: 1px solid #444;
+                    border-radius: 8px;
+                    background: #1e1e1e;
                 }}
                 .panel-header {{
-                    padding: 0.5rem;
-                    background: #f0f0f0;
-                    border-bottom: 1px solid #ccc;
+                    padding: 0.75rem;
+                    background: #252525;
+                    border-bottom: 1px solid #444;
+                    border-top-left-radius: 8px;
+                    border-top-right-radius: 8px;
+                    font-size: 16px;
+                    font-weight: bold;
+                    color: #fff;
                 }}
                 .code-content {{
                     flex: 1;
                     overflow: auto;
-                    padding: 0.5rem;
+                    padding: 1rem;
+                    color: #E0E0E0;  /* Light gray text for better readability */
                 }}
                 .line {{
                     display: flex;
-                    padding: 2px 4px;
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    margin: 1px 0;
+                    color: #E0E0E0;  /* Light gray text */
                 }}
                 .line-number {{
-                    color: #666;
-                    margin-right: 1rem;
+                    color: #888;
+                    margin-right: 1.5rem;
                     user-select: none;
+                    min-width: 3em;
+                    text-align: right;
                 }}
                 .line.highlighted {{
-                    background: #e6f3ff;
+                    background: rgba(100, 143, 255, 0.4);  /* Increased opacity for better contrast */
+                    border-left: 3px solid #648FFF;
+                    font-weight: bold;
+                    color: #FFFFFF;
+                }}
+                .line.highlighted-array {{
+                    background: rgba(255, 128, 128, 0.4);  /* Increased opacity */
+                    border-left: 3px solid #FF8080;
+                    color: #FFFFFF;
+                }}
+                .line.highlighted-math {{
+                    background: rgba(120, 94, 240, 0.4);  /* Increased opacity */
+                    border-left: 3px solid #785EF0;
+                    color: #FFFFFF;
+                }}
+                .line.highlighted-memory {{
+                    background: rgba(220, 38, 127, 0.4);  /* Increased opacity */
+                    border-left: 3px solid #DC267F;
+                    color: #FFFFFF;
+                }}
+                .line.highlighted-thread {{
+                    background: rgba(254, 97, 0, 0.4);  /* Increased opacity */
+                    border-left: 3px solid #FE6100;
+                    color: #FFFFFF;
                 }}
                 .mapping-info {{
                     margin-top: 1rem;
-                    padding: 1rem;
-                    background: #f8f9fa;
-                    border-radius: 4px;
+                    padding: 1.5rem;
+                    background: #252525;
+                    border-radius: 8px;
+                    color: #E0E0E0;  /* Light gray text */
+                    border: 1px solid #444;
                 }}
+                .mapping-info h3 {{
+                    margin-top: 0;
+                    font-size: 18px;
+                    color: #FFFFFF;
+                }}
+                .mapping-info strong {{
+                    color: #648FFF;
+                    font-weight: bold;
+                }}
+                .mapping-info div {{
+                    margin: 8px 0;
+                    padding: 8px;
+                    background: rgba(37, 37, 37, 0.8);  /* Increased opacity */
+                    border-radius: 4px;
+                    border-left: 3px solid #648FFF;
+                }}
+                .mapping-info hr {{
+                    border: none;
+                    border-top: 1px solid #444;
+                    margin: 12px 0;
+                }}
+                .keyword {{ color: #569CD6; }}  /* Bright blue */
+                .string {{ color: #CE9178; }}   /* Coral */
+                .comment {{ color: #6A9955; }}  /* Green */
+                .type {{ color: #4EC9B0; }}     /* Teal */
+                .number {{ color: #B5CEA8; }}   /* Light green */
+                .function {{ color: #DCDCAA; }} /* Light yellow */
+                .operator {{ color: #D4D4D4; }} /* Light gray */
+                .variable {{ color: #9CDCFE; }} /* Light blue */
             </style>
             
             <div class="code-panels">
                 <div class="code-panel">
                     <div class="panel-header">Java Source</div>
                     <div class="code-content" id="{viz_id}_java">
-                        {self._format_code_with_lines(java_code)}
+                        {java_highlighted}
                     </div>
                 </div>
                 
                 <div class="code-panel">
                     <div class="panel-header">{target_type.upper()} Target</div>
                     <div class="code-content" id="{viz_id}_target">
-                        {self._format_code_with_lines(target_code)}
+                        {target_highlighted}
                     </div>
                 </div>
             </div>
@@ -361,7 +615,7 @@ class ReactVisualizer:
                     javaPanel.querySelectorAll('.line').forEach(line => {{
                         line.addEventListener('mouseover', () => {{
                             const lineNum = parseInt(line.getAttribute('data-line'));
-                            const relatedMappings = mappings.filter(m => m.source_line === lineNum);
+                            const relatedMappings = mappings.filter(m => m.source_lines.includes(lineNum));
                             
                             if (relatedMappings.length > 0) {{
                                 // Highlight this line
@@ -369,7 +623,7 @@ class ReactVisualizer:
                                 
                                 // Highlight target lines
                                 relatedMappings.forEach(mapping => {{
-                                    const targetLine = targetPanel.querySelector(`[data-line="${{mapping.target_line}}"]`);
+                                    const targetLine = targetPanel.querySelector(`[data-line="${{mapping.target_lines[0]}}"]`);
                                     if (targetLine) {{
                                         targetLine.classList.add('highlighted');
                                         targetLine.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
@@ -380,7 +634,7 @@ class ReactVisualizer:
                                 infoPanel.innerHTML = relatedMappings.map(m => `
                                     <div>
                                         <strong>${{m.type}}</strong>: ${{m.description}}<br>
-                                        Java line ${{m.source_line}} → {target_type} line ${{m.target_line}}
+                                        Java line ${{m.source_lines[0]}} → {target_type} line ${{m.target_lines[0]}}
                                     </div>
                                 `).join('<hr>');
                             }}
@@ -398,7 +652,7 @@ class ReactVisualizer:
                     targetPanel.querySelectorAll('.line').forEach(line => {{
                         line.addEventListener('mouseover', () => {{
                             const lineNum = parseInt(line.getAttribute('data-line'));
-                            const relatedMappings = mappings.filter(m => m.target_line === lineNum);
+                            const relatedMappings = mappings.filter(m => m.target_lines.includes(lineNum));
                             
                             if (relatedMappings.length > 0) {{
                                 // Highlight this line
@@ -406,7 +660,7 @@ class ReactVisualizer:
                                 
                                 // Highlight Java lines
                                 relatedMappings.forEach(mapping => {{
-                                    const javaLine = javaPanel.querySelector(`[data-line="${{mapping.source_line}}"]`);
+                                    const javaLine = javaPanel.querySelector(`[data-line="${{mapping.source_lines[0]}}"]`);
                                     if (javaLine) {{
                                         javaLine.classList.add('highlighted');
                                         javaLine.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
@@ -417,7 +671,7 @@ class ReactVisualizer:
                                 infoPanel.innerHTML = relatedMappings.map(m => `
                                     <div>
                                         <strong>${{m.type}}</strong>: ${{m.description}}<br>
-                                        {target_type} line ${{m.target_line}} → Java line ${{m.source_line}}
+                                        {target_type} line ${{m.target_lines[0]}} → Java line ${{m.source_lines[0]}}
                                     </div>
                                 `).join('<hr>');
                             }}
@@ -437,43 +691,289 @@ class ReactVisualizer:
         
         return html
     
-    def _format_code_with_lines(self, code: str) -> str:
-        """Format code with line numbers"""
+    def _highlight_java_code(self, code: str) -> str:
+        """Enhanced Java syntax highlighting with proper HTML handling"""
+        # Define Java language elements
+        java_keywords = [
+            'public', 'private', 'protected', 'static', 'final', 'void',
+            'int', 'float', 'double', 'boolean', 'for', 'while', 'do',
+            'if', 'else', 'return', 'new', 'class', 'interface', 'extends',
+            'implements', 'try', 'catch', 'finally', 'throw', 'throws'
+        ]
+        java_types = ['String', 'Integer', 'Float', 'Double', 'Boolean', 'List', 'Map', 'FloatArray']
+        
+        def escape_html(text: str) -> str:
+            """Escape HTML special characters"""
+            return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        
         lines = code.split('\n')
-        return '\n'.join(
-            f'<div class="line" data-line="{i+1}">'
-            f'<span class="line-number">{i+1}</span>'
-            f'<span class="line-content">{line}</span>'
-            f'</div>'
-            for i, line in enumerate(lines)
-        )
+        highlighted_lines = []
+        
+        for i, line in enumerate(lines, 1):
+            # Convert the line to a list of tokens with their types
+            tokens = []
+            remaining_line = line
+            
+            # Handle comments first
+            if '//' in remaining_line:
+                code_part, comment = remaining_line.split('//', 1)
+                remaining_line = code_part
+                tokens.append(('comment', '//' + comment))
+            
+            # Process the remaining line
+            while remaining_line:
+                # Try to match each pattern in order of priority
+                matched = False
+                
+                # 1. String literals
+                string_match = re.match(r'^"[^"]*"', remaining_line)
+                if string_match:
+                    tokens.append(('string', string_match.group()))
+                    remaining_line = remaining_line[len(string_match.group()):]
+                    matched = True
+                    continue
+                
+                # 2. Numbers (including float literals)
+                number_match = re.match(r'^\b\d+\.?\d*f?\b', remaining_line)
+                if number_match:
+                    tokens.append(('number', number_match.group()))
+                    remaining_line = remaining_line[len(number_match.group()):]
+                    matched = True
+                    continue
+                
+                # 3. Types
+                for type_name in java_types:
+                    if remaining_line.startswith(type_name) and (
+                        len(remaining_line) == len(type_name) or 
+                        not remaining_line[len(type_name)].isalnum()
+                    ):
+                        tokens.append(('type', type_name))
+                        remaining_line = remaining_line[len(type_name):]
+                        matched = True
+                        break
+                if matched:
+                    continue
+                
+                # 4. Keywords
+                for keyword in java_keywords:
+                    if remaining_line.startswith(keyword) and (
+                        len(remaining_line) == len(keyword) or 
+                        not remaining_line[len(keyword)].isalnum()
+                    ):
+                        tokens.append(('keyword', keyword))
+                        remaining_line = remaining_line[len(keyword):]
+                        matched = True
+                        break
+                if matched:
+                    continue
+                
+                # 5. Method calls
+                method_match = re.match(r'^(\w+)\s*\(', remaining_line)
+                if method_match:
+                    tokens.append(('function', method_match.group(1)))
+                    remaining_line = remaining_line[len(method_match.group(1)):]
+                    matched = True
+                    continue
+                
+                # 6. Annotations
+                annotation_match = re.match(r'^@\w+', remaining_line)
+                if annotation_match:
+                    tokens.append(('annotation', annotation_match.group()))
+                    remaining_line = remaining_line[len(annotation_match.group()):]
+                    matched = True
+                    continue
+                
+                # 7. Operators
+                operator_match = re.match(r'^([+\-*/=<>!&|^~%]|>=|<=|==|!=|&&|\|\|)', remaining_line)
+                if operator_match:
+                    tokens.append(('operator', operator_match.group()))
+                    remaining_line = remaining_line[len(operator_match.group()):]
+                    matched = True
+                    continue
+                
+                # If no match, take one character as plain text
+                tokens.append(('text', remaining_line[0]))
+                remaining_line = remaining_line[1:]
+            
+            # Build the highlighted line
+            highlighted_code = []
+            for token_type, token_text in tokens:
+                escaped_text = escape_html(token_text)
+                if token_type == 'text':
+                    highlighted_code.append(escaped_text)
+                else:
+                    highlighted_code.append(f'<span class="{token_type}">{escaped_text}</span>')
+            
+            # Create the line div with proper classes
+            highlighted_lines.append(
+                f'<div class="line" data-line="{i}">'
+                f'<span class="line-number">{i}</span>'
+                f'<span class="line-content">{" ".join(highlighted_code)}</span>'
+                f'</div>'
+            )
+        
+        return '\n'.join(highlighted_lines)
     
-    def _display_mapping_stats(self, mappings: List[Dict]) -> None:
-        """Display statistics about the mappings"""
-        if not mappings:
-            st.warning("No mappings found between Java and target code.")
+    def _highlight_target_code(self, code: str, target_type: str) -> str:
+        """Enhanced target code syntax highlighting"""
+        if target_type.lower() == 'ptx':
+            keywords = ['ld.global', 'st.global', 'mov', 'add', 'mul', 'div', 'bra', 'setp']
+            types = ['%rd', '%r', '%f', '%p', '%b']
+        else:  # OpenCL
+            keywords = ['__global', '__local', '__private', 'kernel', 'void', 'int', 'float']
+            types = ['float2', 'float4', 'int2', 'int4', 'size_t', 'uint']
+        
+        lines = code.split('\n')
+        highlighted_lines = []
+        
+        for i, line in enumerate(lines, 1):
+            # Handle comments
+            if '//' in line:
+                code_part, comment_part = line.split('//', 1)
+                comment = f'<span class="comment">//{comment_part}</span>'
+            else:
+                code_part, comment_part = line, ''
+                comment = ''
+            
+            # Highlight keywords
+            for keyword in keywords:
+                pattern = f'\\b{keyword}\\b'
+                code_part = re.sub(pattern, f'<span class="keyword">{keyword}</span>', code_part)
+            
+            # Highlight types
+            for type_name in types:
+                pattern = f'\\b{type_name}\\b'
+                code_part = re.sub(pattern, f'<span class="type">{type_name}</span>', code_part)
+            
+            # Highlight numbers
+            code_part = re.sub(r'\b\d+\b', lambda m: f'<span class="number">{m.group()}</span>', code_part)
+            
+            # Highlight function calls
+            code_part = re.sub(r'(\w+)\(', r'<span class="function">\1</span>(', code_part)
+            
+            highlighted_lines.append(
+                f'<div class="line" data-line="{i}">'
+                f'<span class="line-number">{i}</span>'
+                f'<span class="line-content">{code_part}{comment}</span>'
+                f'</div>'
+            )
+        
+        return '\n'.join(highlighted_lines)
+    
+    def _display_mapping_stats(self) -> None:
+        """Display enhanced mapping statistics with DFT-specific metrics"""
+        if not self.mapping_stats:
+            st.warning("No mapping statistics available.")
             return
         
-        # Count mappings by type
-        mapping_counts = {}
-        for mapping in mappings:
-            mapping_type = mapping['type']
-            mapping_counts[mapping_type] = mapping_counts.get(mapping_type, 0) + 1
+        st.header("Code Mapping Statistics")
         
-        # Display statistics
-        st.subheader("Mapping Statistics")
+        # Summary metrics in columns
+        cols = st.columns(3)
+        with cols[0]:
+            st.metric("Total Mappings", self.mapping_stats['total_mappings'])
         
-        # Create columns for stats
-        cols = st.columns(len(mapping_counts))
-        for i, (type_name, count) in enumerate(mapping_counts.items()):
-            with cols[i]:
-                st.metric(
-                    label=type_name.replace('_', ' ').title(),
-                    value=count
-                )
+        with cols[1]:
+            high_conf = self.mapping_stats['confidence']['high']
+            high_pct = (high_conf / self.mapping_stats['total_mappings'] * 100) if self.mapping_stats['total_mappings'] > 0 else 0
+            st.metric("High Confidence Mappings", f"{high_conf} ({high_pct:.1f}%)")
         
-        # Display total mappings
-        st.metric("Total Mappings", len(mappings))
+        with cols[2]:
+            if self.target_type == 'ptx':
+                st.metric("DFT-Specific Patterns", len(self.target_patterns.get('dft_specific', [])))
+        
+        # Display mappings by type with DFT context
+        st.subheader("Mappings by Type")
+        
+        # Create DataFrame for bar chart
+        mapping_types = list(self.mapping_stats['by_type'].keys())
+        mapping_counts = list(self.mapping_stats['by_type'].values())
+        
+        df = pd.DataFrame({
+            'Type': [t.replace('_', ' ').title() for t in mapping_types],
+            'Count': mapping_counts
+        })
+        
+        # Create bar chart with DFT-specific highlighting
+        if not df.empty:
+            fig = px.bar(df, x='Type', y='Count', 
+                      title='Distribution of Mapping Types',
+                      color='Type',
+                      color_discrete_sequence=px.colors.qualitative.G10)
+            
+            fig.update_layout(
+                xaxis_title="Mapping Type",
+                yaxis_title="Number of Mappings",
+                showlegend=False
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # DFT-specific metrics
+        if self.target_type == 'ptx':
+            st.subheader("DFT-Specific Analysis")
+            
+            # Create metric columns for DFT patterns
+            metric_cols = st.columns(4)
+            with metric_cols[0]:
+                st.metric("Thread Indexing", len([p for p in self.target_patterns.get('dft_specific', []) 
+                                                if p['type'] == 'thread_indexing']))
+            with metric_cols[1]:
+                st.metric("Angle Calculations", len([p for p in self.target_patterns.get('dft_specific', []) 
+                                                   if p['type'] == 'angle_calculation']))
+            with metric_cols[2]:
+                st.metric("Global Memory Ops", len(self.target_patterns.get('global_memory', [])))
+            with metric_cols[3]:
+                st.metric("Math Operations", len(self.target_patterns.get('math_operations', [])))
+            
+            # Create pie chart for DFT memory operations
+            memory_df = pd.DataFrame({
+                'Type': ['Input Loads', 'Output Stores', 'Math Operations'],
+                'Count': [
+                    len([p for p in self.target_patterns.get('global_memory', []) 
+                         if p['type'] == 'load' and p.get('context') == 'dft_input']),
+                    len([p for p in self.target_patterns.get('global_memory', []) 
+                         if p['type'] == 'store' and p.get('context') == 'dft_output']),
+                    len(self.target_patterns.get('math_operations', []))
+                ]
+            })
+            
+            fig = px.pie(memory_df, values='Count', names='Type',
+                      title='DFT Memory and Math Operations',
+                      color_discrete_sequence=px.colors.sequential.Plasma)
+            
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Display detailed mapping subtypes
+        st.subheader("Detailed Mapping Subtypes")
+        
+        # Create DataFrame for detailed subtypes
+        subtypes = list(self.mapping_stats['by_subtype'].keys())
+        subtype_counts = list(self.mapping_stats['by_subtype'].values())
+        
+        detailed_df = pd.DataFrame({
+            'Subtype': [s.replace('_', ' ').replace('to', '→').title() for s in subtypes],
+            'Count': subtype_counts
+        })
+        
+        # Create horizontal bar chart
+        if not detailed_df.empty:
+            detailed_df = detailed_df.sort_values('Count', ascending=True)
+            
+            fig = px.bar(detailed_df, y='Subtype', x='Count', 
+                      title='Detailed Mapping Subtypes',
+                      orientation='h',
+                      color='Count',
+                      color_continuous_scale=px.colors.sequential.Plasma)
+            
+            fig.update_layout(
+                yaxis_title="",
+                xaxis_title="Number of Mappings",
+                showlegend=False,
+                height=max(300, len(subtypes) * 30)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
 
     def display_performance_analysis(self, blocks: List[CodeBlock]) -> None:
         """Display performance analysis using Streamlit components"""

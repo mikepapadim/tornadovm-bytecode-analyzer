@@ -1,0 +1,180 @@
+.version 7.6 
+.target sm_86 
+.address_size 64 
+
+.visible .entry s0_t0_nbody_16384_arrays_floatarray_arrays_floatarray(.param .u64 .ptr .global .align 8 kernel_context, .param .align 8 .u64 numBodies, .param .u64 .ptr .global .align 8 refPos, .param .u64 .ptr .global .align 8 refVel) {
+	.reg .f64 rfd<3>;
+	.reg .s64 rsd<15>;
+	.reg .f32 rfi<55>;
+	.reg .pred rpb<3>;
+	.reg .s32 rsi<23>;
+	.reg .u32 rui<17>;
+	.reg .u64 rud<15>;
+
+BLOCK_0:
+	ld.param.u64	rud0, [kernel_context];
+	ld.param.u64	rud1, [refPos];
+	ld.param.u64	rud2, [refVel];
+	.local .f32 rfiArr0[3];
+	.local .f32 rfiArr1[3];
+	mov.u32	rui0, %nctaid.x;
+	mov.u32	rui1, %ntid.x;
+	mul.wide.u32	rud3, rui0, rui1;
+	cvt.s32.u64	rsi0, rud3;
+	mov.u32	rui2, rfiArr1;
+	mul.lo.s32	rsi1, 2, 4;
+	add.u32	rui3, rui2, rsi1;
+	mov.u32	rui4, rfiArr1;
+	mul.lo.s32	rsi2, 1, 4;
+	add.u32	rui5, rui4, rsi2;
+	mov.u32	rui6, rfiArr1;
+	mul.lo.s32	rsi3, 0, 4;
+	add.u32	rui7, rui6, rsi3;
+	mov.u32	rui8, rfiArr0;
+	mul.lo.s32	rsi4, 2, 4;
+	add.u32	rui9, rui8, rsi4;
+	mov.u32	rui10, rfiArr0;
+	mul.lo.s32	rsi5, 1, 4;
+	add.u32	rui11, rui10, rsi5;
+	mov.u32	rui12, rfiArr0;
+	mul.lo.s32	rsi6, 0, 4;
+	add.u32	rui13, rui12, rsi6;
+	mov.u32	rui14, %tid.x;
+	mov.u32	rui15, %ctaid.x;
+	mad.lo.s32	rsi7, rui15, rui1, rui14;
+	ldu.global.s32	rsi8, [rud0];
+
+BLOCK_1:
+	mov.s32	rsi9, rsi7;
+LOOP_COND_1:
+	setp.lt.s32	rpb0, rsi9, rsi8;
+	@!rpb0 bra	BLOCK_6;
+
+BLOCK_2:
+	st.local.f32	[rui13], 0F00000000;
+	st.local.f32	[rui11], 0F00000000;
+	st.local.f32	[rui9], 0F00000000;
+	shl.b32	rsi10, rsi9, 2;
+	add.s32	rsi11, rsi10, 8;
+	cvt.s64.s32	rsd0, rsi11;
+	shl.b64	rsd1, rsd0, 2;
+	add.u64	rud4, rud1, rsd1;
+	add.s32	rsi12, rsi10, 7;
+	cvt.s64.s32	rsd2, rsi12;
+	shl.b64	rsd3, rsd2, 2;
+	add.u64	rud5, rud1, rsd3;
+	add.s32	rsi13, rsi10, 6;
+	cvt.s64.s32	rsd4, rsi13;
+	shl.b64	rsd5, rsd4, 2;
+	add.u64	rud6, rud1, rsd5;
+
+BLOCK_3:
+	mov.s32	rsi14, 0;
+	mov.f32	rfi0, 0F00000000;
+LOOP_COND_3:
+	setp.lt.s32	rpb1, rsi14, rsi8;
+	@!rpb1 bra	BLOCK_5;
+
+BLOCK_4:
+	shl.b32	rsi15, rsi14, 2;
+	add.s32	rsi16, rsi15, 6;
+	cvt.s64.s32	rsd6, rsi16;
+	shl.b64	rsd7, rsd6, 2;
+	add.u64	rud7, rud1, rsd7;
+	ld.global.f32	rfi1, [rud7];
+	ld.global.f32	rfi2, [rud6];
+	sub.rn.f32	rfi3, rfi1, rfi2;
+	st.local.f32	[rui7], rfi3;
+	add.s32	rsi17, rsi15, 7;
+	cvt.s64.s32	rsd8, rsi17;
+	shl.b64	rsd9, rsd8, 2;
+	add.u64	rud8, rud1, rsd9;
+	ld.global.f32	rfi4, [rud8];
+	ld.global.f32	rfi5, [rud5];
+	sub.rn.f32	rfi6, rfi4, rfi5;
+	st.local.f32	[rui5], rfi6;
+	add.s32	rsi18, rsi15, 8;
+	cvt.s64.s32	rsd10, rsi18;
+	shl.b64	rsd11, rsd10, 2;
+	add.u64	rud9, rud1, rsd11;
+	ld.global.f32	rfi7, [rud9];
+	ld.global.f32	rfi8, [rud4];
+	sub.rn.f32	rfi9, rfi7, rfi8;
+	st.local.f32	[rui3], rfi9;
+	add.s32	rsi19, rsi15, 9;
+	cvt.s64.s32	rsd12, rsi19;
+	shl.b64	rsd13, rsd12, 2;
+	add.u64	rud10, rud1, rsd13;
+	ld.global.f32	rfi10, [rud10];
+	ld.local.f32	rfi11, [rui13];
+	mad.rn.f32	rfi12, rfi3, rfi3, 0F00000000;
+	mad.rn.f32	rfi13, rfi6, rfi6, rfi12;
+	mad.rn.f32	rfi14, rfi9, rfi9, rfi13;
+	add.rn.f32	rfi15, rfi14, 0F43FA0000;
+	cvt.f64.f32	rfd0, rfi15;
+	rsqrt.approx.f64	rfd1, rfd0;
+	cvt.rn.f32.f64	rfi16, rfd1;
+	mul.rn.f32	rfi17, rfi16, rfi16;
+	mul.rn.f32	rfi18, rfi17, rfi16;
+	mul.rn.f32	rfi19, rfi18, rfi10;
+	mad.rn.f32	rfi20, rfi19, rfi3, rfi11;
+	st.local.f32	[rui13], rfi20;
+	ld.local.f32	rfi21, [rui11];
+	mad.rn.f32	rfi22, rfi19, rfi6, rfi21;
+	st.local.f32	[rui11], rfi22;
+	ld.local.f32	rfi23, [rui9];
+	mad.rn.f32	rfi24, rfi19, rfi9, rfi23;
+	st.local.f32	[rui9], rfi24;
+	add.s32	rsi20, rsi14, 1;
+	mov.s32	rsi14, rsi20;
+	mov.f32	rfi0, rfi20;
+	bra.uni	LOOP_COND_3;
+
+BLOCK_5:
+	ld.global.f32	rfi25, [rud6];
+	ld.global.f32	rfi26, [rud6];
+	mul.rn.f32	rfi27, rfi0, 0F3F000000;
+	mul.rn.f32	rfi28, rfi27, 0F3BA3D70A;
+	mad.rn.f32	rfi29, rfi26, 0F3BA3D70A, rfi25;
+	mad.rn.f32	rfi30, rfi28, 0F3BA3D70A, rfi29;
+	st.global.f32	[rud6], rfi30;
+	ld.global.f32	rfi31, [rud6];
+	ld.local.f32	rfi32, [rui13];
+	add.u64	rud11, rud2, rsd5;
+	mad.rn.f32	rfi33, rfi32, 0F3BA3D70A, rfi31;
+	st.global.f32	[rud11], rfi33;
+	ld.global.f32	rfi34, [rud5];
+	ld.global.f32	rfi35, [rud5];
+	ld.local.f32	rfi36, [rui11];
+	mul.rn.f32	rfi37, rfi36, 0F3F000000;
+	mul.rn.f32	rfi38, rfi37, 0F3BA3D70A;
+	mad.rn.f32	rfi39, rfi35, 0F3BA3D70A, rfi34;
+	mad.rn.f32	rfi40, rfi38, 0F3BA3D70A, rfi39;
+	st.global.f32	[rud5], rfi40;
+	ld.global.f32	rfi41, [rud5];
+	ld.local.f32	rfi42, [rui11];
+	add.u64	rud12, rud2, rsd3;
+	mad.rn.f32	rfi43, rfi42, 0F3BA3D70A, rfi41;
+	st.global.f32	[rud12], rfi43;
+	ld.global.f32	rfi44, [rud4];
+	ld.global.f32	rfi45, [rud4];
+	ld.local.f32	rfi46, [rui9];
+	mul.rn.f32	rfi47, rfi46, 0F3F000000;
+	mul.rn.f32	rfi48, rfi47, 0F3BA3D70A;
+	mad.rn.f32	rfi49, rfi45, 0F3BA3D70A, rfi44;
+	mad.rn.f32	rfi50, rfi48, 0F3BA3D70A, rfi49;
+	st.global.f32	[rud4], rfi50;
+	ld.global.f32	rfi51, [rud4];
+	ld.local.f32	rfi52, [rui9];
+	add.u64	rud13, rud2, rsd1;
+	mad.rn.f32	rfi53, rfi52, 0F3BA3D70A, rfi51;
+	st.global.f32	[rud13], rfi53;
+	add.s32	rsi21, rsi0, rsi9;
+	mov.s32	rsi9, rsi21;
+	bra.uni	LOOP_COND_1;
+	bra.uni	BLOCK_1;
+
+BLOCK_6:
+	ret;
+}
+
