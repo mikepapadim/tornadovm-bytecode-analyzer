@@ -54,8 +54,15 @@ class ReactVisualizer:
                               target_blocks: List[CodeBlock],
                               mappings: List[CodeMapping]) -> None:
         """Display code transition visualization using Streamlit components"""
-        # Set target type from the first block's language
-        self.target_type = target_blocks[0].language if target_blocks else "ptx"
+        # Set target type from the first block's language and ensure lowercase
+        self.target_type = target_blocks[0].language.lower() if target_blocks else "ptx"
+        
+        # Define title mapping for different target types
+        title_map = {
+            "ptx": "PTX Target",
+            "opencl": "OpenCL Target"
+        }
+        target_title = title_map.get(self.target_type, f"{self.target_type.upper()} Target")
         
         # Combine all Java code and target code
         java_code = self._combine_blocks(java_blocks)
@@ -63,7 +70,7 @@ class ReactVisualizer:
         
         # Find patterns in both code bases
         self.java_patterns = self._find_java_patterns(java_code)
-        if self.target_type.lower() == 'ptx':
+        if self.target_type == 'ptx':
             self.target_patterns = self._find_ptx_patterns(target_code)
         else:
             self.target_patterns = self._find_opencl_patterns(target_code)
@@ -71,8 +78,8 @@ class ReactVisualizer:
         # Create semantic mappings
         semantic_mappings = self._create_semantic_mappings()
         
-        # Create the visualization HTML
-        html = self._create_visualization_html(java_code, target_code, self.target_type, semantic_mappings)
+        # Create the visualization HTML with proper title
+        html = self._create_visualization_html(java_code, target_code, target_title, semantic_mappings)
         
         # Display using Streamlit components
         components.html(html, height=800, scrolling=True)
@@ -456,13 +463,13 @@ class ReactVisualizer:
         return mappings
     
     def _create_visualization_html(self, java_code: str, target_code: str, 
-                                 target_type: str, mappings: List[Dict]) -> str:
+                                 target_title: str, mappings: List[Dict]) -> str:
         """Create HTML for the visualization with enhanced styling"""
         viz_id = f"viz_{hash(java_code + target_code)}"
         
         # Add syntax highlighting for Java code
         java_highlighted = self._highlight_java_code(java_code)
-        target_highlighted = self._highlight_target_code(target_code, target_type)
+        target_highlighted = self._highlight_target_code(target_code, self.target_type)
         
         html = f"""
         <div id="{viz_id}" class="code-viz">
@@ -471,116 +478,203 @@ class ReactVisualizer:
                     display: flex;
                     flex-direction: column;
                     height: 100%;
-                    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+                    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
                     font-size: 14px;
-                    line-height: 1.5;
+                    line-height: 1.6;
+                    background: #1e1e1e;
+                    color: #d4d4d4;
                 }}
                 .code-panels {{
                     display: flex;
-                    gap: 1rem;
-                    height: 700px;
+                    gap: 1.5rem;
+                    flex: 1;
+                    min-height: 400px;
+                    height: calc(100vh - 300px);
+                    max-height: 800px;
+                    padding: 1rem;
+                    overflow: hidden;
                 }}
                 .code-panel {{
                     flex: 1;
                     display: flex;
                     flex-direction: column;
-                    border: 1px solid #444;
+                    border: 1px solid #3c3c3c;
                     border-radius: 8px;
-                    background: #1e1e1e;
+                    background: #252526;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    min-width: 0;
                 }}
                 .panel-header {{
-                    padding: 0.75rem;
-                    background: #252525;
-                    border-bottom: 1px solid #444;
+                    padding: 1rem;
+                    background: #323233;
+                    border-bottom: 1px solid #3c3c3c;
                     border-top-left-radius: 8px;
                     border-top-right-radius: 8px;
                     font-size: 16px;
-                    font-weight: bold;
-                    color: #fff;
+                    font-weight: 600;
+                    color: #ffffff;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    position: sticky;
+                    top: 0;
+                    z-index: 10;
                 }}
                 .code-content {{
                     flex: 1;
                     overflow: auto;
                     padding: 1rem;
-                    color: #E0E0E0;  /* Light gray text for better readability */
+                    font-size: 14px;
+                    line-height: 1.6;
+                    color: #e0e0e0;
                 }}
                 .line {{
                     display: flex;
                     padding: 2px 8px;
                     border-radius: 4px;
                     margin: 1px 0;
-                    color: #E0E0E0;  /* Light gray text */
+                    transition: all 0.2s ease;
+                    white-space: pre;
+                    width: 100%;
+                }}
+                .line:hover {{
+                    background: rgba(86, 156, 214, 0.15);
                 }}
                 .line-number {{
-                    color: #888;
+                    color: #858585;
                     margin-right: 1.5rem;
                     user-select: none;
                     min-width: 3em;
                     text-align: right;
                 }}
+                .line-content {{
+                    flex: 1;
+                    white-space: pre;
+                    font-family: inherit;
+                    overflow-x: auto;
+                }}
                 .line.highlighted {{
-                    background: rgba(100, 143, 255, 0.4);  /* Increased opacity for better contrast */
-                    border-left: 3px solid #648FFF;
-                    font-weight: bold;
-                    color: #FFFFFF;
+                    background: rgba(86, 156, 214, 0.4);
+                    border-left: 3px solid #569cd6;
+                    font-weight: 500;
+                    color: #ffffff;
                 }}
                 .line.highlighted-array {{
-                    background: rgba(255, 128, 128, 0.4);  /* Increased opacity */
-                    border-left: 3px solid #FF8080;
-                    color: #FFFFFF;
+                    background: rgba(206, 145, 120, 0.4);
+                    border-left: 3px solid #ce9178;
+                    color: #ffffff;
                 }}
                 .line.highlighted-math {{
-                    background: rgba(120, 94, 240, 0.4);  /* Increased opacity */
-                    border-left: 3px solid #785EF0;
-                    color: #FFFFFF;
+                    background: rgba(197, 134, 192, 0.4);
+                    border-left: 3px solid #c586c0;
+                    color: #ffffff;
                 }}
                 .line.highlighted-memory {{
-                    background: rgba(220, 38, 127, 0.4);  /* Increased opacity */
-                    border-left: 3px solid #DC267F;
-                    color: #FFFFFF;
+                    background: rgba(181, 206, 168, 0.4);
+                    border-left: 3px solid #b5cea8;
+                    color: #ffffff;
                 }}
                 .line.highlighted-thread {{
-                    background: rgba(254, 97, 0, 0.4);  /* Increased opacity */
-                    border-left: 3px solid #FE6100;
-                    color: #FFFFFF;
+                    background: rgba(220, 220, 170, 0.4);
+                    border-left: 3px solid #dcdcaa;
+                    color: #ffffff;
                 }}
                 .mapping-info {{
-                    margin-top: 1rem;
+                    margin: 1rem;
                     padding: 1.5rem;
-                    background: #252525;
+                    background: #323233;
                     border-radius: 8px;
-                    color: #E0E0E0;  /* Light gray text */
-                    border: 1px solid #444;
+                    color: #e0e0e0;
+                    border: 1px solid #3c3c3c;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    max-height: 300px;
+                    overflow-y: auto;
+                    resize: vertical;
                 }}
                 .mapping-info h3 {{
                     margin-top: 0;
                     font-size: 18px;
-                    color: #FFFFFF;
-                }}
-                .mapping-info strong {{
-                    color: #648FFF;
-                    font-weight: bold;
+                    color: #ffffff;
+                    font-weight: 600;
+                    margin-bottom: 1rem;
+                    position: sticky;
+                    top: 0;
+                    background: #323233;
+                    padding: 0.5rem 0;
+                    z-index: 1;
                 }}
                 .mapping-info div {{
                     margin: 8px 0;
-                    padding: 8px;
-                    background: rgba(37, 37, 37, 0.8);  /* Increased opacity */
-                    border-radius: 4px;
-                    border-left: 3px solid #648FFF;
+                    padding: 12px;
+                    background: #252526;
+                    border-radius: 6px;
+                    border-left: 3px solid #569cd6;
+                    transition: transform 0.2s;
+                }}
+                .mapping-info div:hover {{
+                    transform: translateX(4px);
+                    background: #2d2d2d;
+                }}
+                .mapping-info strong {{
+                    color: #569cd6;
+                    font-weight: 600;
                 }}
                 .mapping-info hr {{
                     border: none;
-                    border-top: 1px solid #444;
+                    border-top: 1px solid #3c3c3c;
                     margin: 12px 0;
                 }}
-                .keyword {{ color: #569CD6; }}  /* Bright blue */
-                .string {{ color: #CE9178; }}   /* Coral */
-                .comment {{ color: #6A9955; }}  /* Green */
-                .type {{ color: #4EC9B0; }}     /* Teal */
-                .number {{ color: #B5CEA8; }}   /* Light green */
-                .function {{ color: #DCDCAA; }} /* Light yellow */
-                .operator {{ color: #D4D4D4; }} /* Light gray */
-                .variable {{ color: #9CDCFE; }} /* Light blue */
+                /* Enhanced syntax highlighting */
+                .keyword {{ color: #569cd6; font-weight: 600; }}
+                .string {{ color: #ce9178; }}
+                .comment {{ color: #6a9955; font-style: italic; }}
+                .type {{ color: #4ec9b0; font-weight: 500; }}
+                .number {{ color: #b5cea8; }}
+                .function {{ color: #dcdcaa; }}
+                .operator {{ color: #d4d4d4; }}
+                .variable {{ color: #9cdcfe; }}
+                .annotation {{ color: #c586c0; font-style: italic; }}
+                
+                /* Scrollbar styling */
+                .code-content::-webkit-scrollbar,
+                .mapping-info::-webkit-scrollbar {{
+                    width: 12px;
+                    height: 12px;
+                }}
+                .code-content::-webkit-scrollbar-track,
+                .mapping-info::-webkit-scrollbar-track {{
+                    background: #1e1e1e;
+                    border-radius: 6px;
+                }}
+                .code-content::-webkit-scrollbar-thumb,
+                .mapping-info::-webkit-scrollbar-thumb {{
+                    background: #424242;
+                    border-radius: 6px;
+                    border: 3px solid #1e1e1e;
+                }}
+                .code-content::-webkit-scrollbar-thumb:hover,
+                .mapping-info::-webkit-scrollbar-thumb:hover {{
+                    background: #4f4f4f;
+                }}
+                
+                /* Responsive adjustments */
+                @media (max-width: 1200px) {{
+                    .code-panels {{
+                        flex-direction: column;
+                        height: auto;
+                    }}
+                    .code-panel {{
+                        height: 400px;
+                    }}
+                }}
+                @media (max-width: 768px) {{
+                    .code-panel {{
+                        height: 300px;
+                    }}
+                    .mapping-info {{
+                        max-height: 200px;
+                    }}
+                }}
             </style>
             
             <div class="code-panels">
@@ -592,7 +686,7 @@ class ReactVisualizer:
                 </div>
                 
                 <div class="code-panel">
-                    <div class="panel-header">{target_type.upper()} Target</div>
+                    <div class="panel-header">{target_title}</div>
                     <div class="code-content" id="{viz_id}_target">
                         {target_highlighted}
                     </div>
@@ -623,18 +717,20 @@ class ReactVisualizer:
                                 
                                 // Highlight target lines
                                 relatedMappings.forEach(mapping => {{
-                                    const targetLine = targetPanel.querySelector(`[data-line="${{mapping.target_lines[0]}}"]`);
-                                    if (targetLine) {{
-                                        targetLine.classList.add('highlighted');
-                                        targetLine.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
-                                    }}
+                                    mapping.target_lines.forEach(targetLineNum => {{
+                                        const targetLine = targetPanel.querySelector(`[data-line="${{targetLineNum}}"]`);
+                                        if (targetLine) {{
+                                            targetLine.classList.add(`highlighted-${{mapping.type.toLowerCase()}}`);
+                                            targetLine.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                                        }}
+                                    }});
                                 }});
                                 
                                 // Show mapping info
                                 infoPanel.innerHTML = relatedMappings.map(m => `
-                                    <div>
+                                    <div class="map-${{m.type.toLowerCase()}}">
                                         <strong>${{m.type}}</strong>: ${{m.description}}<br>
-                                        Java line ${{m.source_lines[0]}} → {target_type} line ${{m.target_lines[0]}}
+                                        Java line ${{m.source_lines.join(', ')}} → {self.target_type.upper()} line ${{m.target_lines.join(', ')}}
                                     </div>
                                 `).join('<hr>');
                             }}
@@ -642,8 +738,13 @@ class ReactVisualizer:
                         
                         line.addEventListener('mouseout', () => {{
                             // Remove all highlights
-                            document.querySelectorAll('.line').forEach(l => 
-                                l.classList.remove('highlighted'));
+                            document.querySelectorAll('.line').forEach(l => {{
+                                l.classList.remove('highlighted');
+                                l.classList.remove('highlighted-array');
+                                l.classList.remove('highlighted-math');
+                                l.classList.remove('highlighted-memory');
+                                l.classList.remove('highlighted-thread');
+                            }});
                             infoPanel.innerHTML = '';
                         }});
                     }});
@@ -660,18 +761,20 @@ class ReactVisualizer:
                                 
                                 // Highlight Java lines
                                 relatedMappings.forEach(mapping => {{
-                                    const javaLine = javaPanel.querySelector(`[data-line="${{mapping.source_lines[0]}}"]`);
-                                    if (javaLine) {{
-                                        javaLine.classList.add('highlighted');
-                                        javaLine.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
-                                    }}
+                                    mapping.source_lines.forEach(sourceLineNum => {{
+                                        const javaLine = javaPanel.querySelector(`[data-line="${{sourceLineNum}}"]`);
+                                        if (javaLine) {{
+                                            javaLine.classList.add(`highlighted-${{mapping.type.toLowerCase()}}`);
+                                            javaLine.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                                        }}
+                                    }});
                                 }});
                                 
                                 // Show mapping info
                                 infoPanel.innerHTML = relatedMappings.map(m => `
-                                    <div>
+                                    <div class="map-${{m.type.toLowerCase()}}">
                                         <strong>${{m.type}}</strong>: ${{m.description}}<br>
-                                        {target_type} line ${{m.target_lines[0]}} → Java line ${{m.source_lines[0]}}
+                                        {self.target_type.upper()} line ${{m.target_lines.join(', ')}} → Java line ${{m.source_lines.join(', ')}}
                                     </div>
                                 `).join('<hr>');
                             }}
@@ -679,10 +782,35 @@ class ReactVisualizer:
                         
                         line.addEventListener('mouseout', () => {{
                             // Remove all highlights
-                            document.querySelectorAll('.line').forEach(l => 
-                                l.classList.remove('highlighted'));
+                            document.querySelectorAll('.line').forEach(l => {{
+                                l.classList.remove('highlighted');
+                                l.classList.remove('highlighted-array');
+                                l.classList.remove('highlighted-math');
+                                l.classList.remove('highlighted-memory');
+                                l.classList.remove('highlighted-thread');
+                            }});
                             infoPanel.innerHTML = '';
                         }});
+                    }});
+                    
+                    // Synchronize scrolling between panels
+                    let isScrolling = false;
+                    javaPanel.addEventListener('scroll', () => {{
+                        if (!isScrolling) {{
+                            isScrolling = true;
+                            const scrollPercentage = javaPanel.scrollTop / (javaPanel.scrollHeight - javaPanel.clientHeight);
+                            targetPanel.scrollTop = scrollPercentage * (targetPanel.scrollHeight - targetPanel.clientHeight);
+                            setTimeout(() => isScrolling = false, 50);
+                        }}
+                    }});
+                    
+                    targetPanel.addEventListener('scroll', () => {{
+                        if (!isScrolling) {{
+                            isScrolling = true;
+                            const scrollPercentage = targetPanel.scrollTop / (targetPanel.scrollHeight - targetPanel.clientHeight);
+                            javaPanel.scrollTop = scrollPercentage * (javaPanel.scrollHeight - javaPanel.clientHeight);
+                            setTimeout(() => isScrolling = false, 50);
+                        }}
                     }});
                 }})();
             </script>
@@ -692,19 +820,33 @@ class ReactVisualizer:
         return html
     
     def _highlight_java_code(self, code: str) -> str:
-        """Enhanced Java syntax highlighting with proper HTML handling"""
+        """Enhanced Java syntax highlighting with proper whitespace preservation"""
         # Define Java language elements
         java_keywords = [
             'public', 'private', 'protected', 'static', 'final', 'void',
             'int', 'float', 'double', 'boolean', 'for', 'while', 'do',
             'if', 'else', 'return', 'new', 'class', 'interface', 'extends',
-            'implements', 'try', 'catch', 'finally', 'throw', 'throws'
+            'implements', 'try', 'catch', 'finally', 'throw', 'throws',
+            'synchronized', 'volatile', 'transient', 'native', 'package',
+            'import', 'instanceof', 'super', 'this', 'abstract', 'continue',
+            'break', 'assert', 'default', 'switch', 'case', 'enum'
         ]
-        java_types = ['String', 'Integer', 'Float', 'Double', 'Boolean', 'List', 'Map', 'FloatArray']
+        java_types = [
+            'String', 'Integer', 'Float', 'Double', 'Boolean', 'List', 'Map',
+            'FloatArray', 'Object', 'Class', 'Exception', 'RuntimeException',
+            'Throwable', 'System', 'Thread', 'Runnable', 'Collection', 'Set',
+            'Vector', 'ArrayList', 'HashMap', 'TreeMap', 'LinkedList', 'Queue',
+            'Deque', 'Stack', 'StringBuilder', 'StringBuffer', 'Character',
+            'Byte', 'Short', 'Long', 'Number', 'Math', 'TornadoMath'
+        ]
         
         def escape_html(text: str) -> str:
-            """Escape HTML special characters"""
-            return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            """Escape HTML special characters while preserving whitespace"""
+            # First escape HTML special characters
+            escaped = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            # Then convert leading spaces to non-breaking spaces
+            leading_spaces = len(text) - len(text.lstrip())
+            return '&nbsp;' * leading_spaces + escaped.lstrip()
         
         lines = code.split('\n')
         highlighted_lines = []
@@ -719,33 +861,55 @@ class ReactVisualizer:
                 code_part, comment = remaining_line.split('//', 1)
                 remaining_line = code_part
                 tokens.append(('comment', '//' + comment))
+            elif '/*' in remaining_line and '*/' in remaining_line:
+                before, rest = remaining_line.split('/*', 1)
+                comment, after = rest.split('*/', 1)
+                tokens.append(('text', before))
+                tokens.append(('comment', '/*' + comment + '*/'))
+                remaining_line = after
             
             # Process the remaining line
             while remaining_line:
                 # Try to match each pattern in order of priority
                 matched = False
                 
-                # 1. String literals
-                string_match = re.match(r'^"[^"]*"', remaining_line)
+                # 1. String literals with escape handling
+                string_match = re.match(r'^"(?:[^"\\]|\\.)*"', remaining_line)
                 if string_match:
                     tokens.append(('string', string_match.group()))
                     remaining_line = remaining_line[len(string_match.group()):]
                     matched = True
                     continue
                 
-                # 2. Numbers (including float literals)
-                number_match = re.match(r'^\b\d+\.?\d*f?\b', remaining_line)
+                # 2. Character literals
+                char_match = re.match(r"^'(?:[^'\\]|\\.)'", remaining_line)
+                if char_match:
+                    tokens.append(('string', char_match.group()))
+                    remaining_line = remaining_line[len(char_match.group()):]
+                    matched = True
+                    continue
+                
+                # 3. Numbers (including float literals and hex)
+                number_match = re.match(r'^\b(?:0x[0-9a-fA-F]+|[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?[fFdDlL]?)\b', remaining_line)
                 if number_match:
                     tokens.append(('number', number_match.group()))
                     remaining_line = remaining_line[len(number_match.group()):]
                     matched = True
                     continue
                 
-                # 3. Types
-                for type_name in java_types:
+                # 4. Annotations
+                annotation_match = re.match(r'^@\w+', remaining_line)
+                if annotation_match:
+                    tokens.append(('annotation', annotation_match.group()))
+                    remaining_line = remaining_line[len(annotation_match.group()):]
+                    matched = True
+                    continue
+                
+                # 5. Types (check before keywords as some types might contain keywords)
+                for type_name in sorted(java_types, key=len, reverse=True):
                     if remaining_line.startswith(type_name) and (
                         len(remaining_line) == len(type_name) or 
-                        not remaining_line[len(type_name)].isalnum()
+                        not remaining_line[len(type_name)].isalnum() and remaining_line[len(type_name)] != '_'
                     ):
                         tokens.append(('type', type_name))
                         remaining_line = remaining_line[len(type_name):]
@@ -754,11 +918,11 @@ class ReactVisualizer:
                 if matched:
                     continue
                 
-                # 4. Keywords
-                for keyword in java_keywords:
+                # 6. Keywords
+                for keyword in sorted(java_keywords, key=len, reverse=True):
                     if remaining_line.startswith(keyword) and (
                         len(remaining_line) == len(keyword) or 
-                        not remaining_line[len(keyword)].isalnum()
+                        not remaining_line[len(keyword)].isalnum() and remaining_line[len(keyword)] != '_'
                     ):
                         tokens.append(('keyword', keyword))
                         remaining_line = remaining_line[len(keyword):]
@@ -767,7 +931,7 @@ class ReactVisualizer:
                 if matched:
                     continue
                 
-                # 5. Method calls
+                # 7. Method calls
                 method_match = re.match(r'^(\w+)\s*\(', remaining_line)
                 if method_match:
                     tokens.append(('function', method_match.group(1)))
@@ -775,19 +939,19 @@ class ReactVisualizer:
                     matched = True
                     continue
                 
-                # 6. Annotations
-                annotation_match = re.match(r'^@\w+', remaining_line)
-                if annotation_match:
-                    tokens.append(('annotation', annotation_match.group()))
-                    remaining_line = remaining_line[len(annotation_match.group()):]
-                    matched = True
-                    continue
-                
-                # 7. Operators
-                operator_match = re.match(r'^([+\-*/=<>!&|^~%]|>=|<=|==|!=|&&|\|\|)', remaining_line)
+                # 8. Operators
+                operator_match = re.match(r'^([+\-*/=<>!&|^~%]=?|>=|<=|==|!=|&&|\|\||<<|>>|>>>|\+\+|--|\?|:|\.|,|;|\[|\]|\(|\)|\{|\})', remaining_line)
                 if operator_match:
                     tokens.append(('operator', operator_match.group()))
                     remaining_line = remaining_line[len(operator_match.group()):]
+                    matched = True
+                    continue
+                
+                # 9. Variables and other identifiers
+                identifier_match = re.match(r'^[a-zA-Z_]\w*', remaining_line)
+                if identifier_match:
+                    tokens.append(('variable', identifier_match.group()))
+                    remaining_line = remaining_line[len(identifier_match.group()):]
                     matched = True
                     continue
                 
@@ -795,7 +959,7 @@ class ReactVisualizer:
                 tokens.append(('text', remaining_line[0]))
                 remaining_line = remaining_line[1:]
             
-            # Build the highlighted line
+            # Build the highlighted line with preserved whitespace
             highlighted_code = []
             for token_type, token_text in tokens:
                 escaped_text = escape_html(token_text)
@@ -804,7 +968,7 @@ class ReactVisualizer:
                 else:
                     highlighted_code.append(f'<span class="{token_type}">{escaped_text}</span>')
             
-            # Create the line div with proper classes
+            # Create the line div with proper classes and preserved whitespace
             highlighted_lines.append(
                 f'<div class="line" data-line="{i}">'
                 f'<span class="line-number">{i}</span>'
@@ -819,45 +983,81 @@ class ReactVisualizer:
         if target_type.lower() == 'ptx':
             keywords = ['ld.global', 'st.global', 'mov', 'add', 'mul', 'div', 'bra', 'setp']
             types = ['%rd', '%r', '%f', '%p', '%b']
+            special_funcs = []
         else:  # OpenCL
-            keywords = ['__global', '__local', '__private', 'kernel', 'void', 'int', 'float']
-            types = ['float2', 'float4', 'int2', 'int4', 'size_t', 'uint']
-        
+            keywords = [
+                '__global', '__local', '__private', '__constant', 'kernel', 'void',
+                'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break',
+                'return', 'typedef', 'struct', 'union', 'volatile', 'const'
+            ]
+            types = [
+                'float', 'double', 'int', 'long', 'char', 'unsigned', 'size_t', 'uint',
+                'float2', 'float3', 'float4', 'float8', 'float16',
+                'int2', 'int3', 'int4', 'int8', 'int16',
+                'uint2', 'uint3', 'uint4', 'uint8', 'uint16'
+            ]
+            special_funcs = [
+                'get_global_id', 'get_local_id', 'get_group_id',
+                'get_global_size', 'get_local_size', 'get_num_groups',
+                'barrier', 'mem_fence', 'atomic_add', 'atomic_sub',
+                'native_sin', 'native_cos', 'native_exp', 'native_log',
+                'mad', 'fma', 'clamp', 'min', 'max'
+            ]
+
         lines = code.split('\n')
         highlighted_lines = []
-        
+
         for i, line in enumerate(lines, 1):
+            # Preserve leading whitespace
+            leading_space = len(line) - len(line.lstrip())
+            line_content = line.lstrip()
+            
             # Handle comments
-            if '//' in line:
-                code_part, comment_part = line.split('//', 1)
+            if '//' in line_content:
+                code_part, comment_part = line_content.split('//', 1)
                 comment = f'<span class="comment">//{comment_part}</span>'
             else:
-                code_part, comment_part = line, ''
-                comment = ''
-            
-            # Highlight keywords
-            for keyword in keywords:
-                pattern = f'\\b{keyword}\\b'
-                code_part = re.sub(pattern, f'<span class="keyword">{keyword}</span>', code_part)
-            
-            # Highlight types
-            for type_name in types:
+                code_part, comment = line_content, ''
+
+            # Highlight special functions first (for OpenCL)
+            for func in special_funcs:
+                pattern = f'\\b{func}\\b'
+                code_part = re.sub(pattern, f'<span class="function">{func}</span>', code_part)
+
+            # Highlight types (before keywords to avoid partial matches)
+            for type_name in sorted(types, key=len, reverse=True):
                 pattern = f'\\b{type_name}\\b'
                 code_part = re.sub(pattern, f'<span class="type">{type_name}</span>', code_part)
-            
-            # Highlight numbers
-            code_part = re.sub(r'\b\d+\b', lambda m: f'<span class="number">{m.group()}</span>', code_part)
-            
-            # Highlight function calls
-            code_part = re.sub(r'(\w+)\(', r'<span class="function">\1</span>(', code_part)
-            
+
+            # Highlight keywords
+            for keyword in sorted(keywords, key=len, reverse=True):
+                pattern = f'\\b{keyword}\\b'
+                code_part = re.sub(pattern, f'<span class="keyword">{keyword}</span>', code_part)
+
+            # Highlight numbers (including floating point)
+            code_part = re.sub(
+                r'\b\d+\.?\d*(?:[eE][-+]?\d+)?[fFdDuUlL]*\b',
+                lambda m: f'<span class="number">{m.group()}</span>',
+                code_part
+            )
+
+            # Highlight operators
+            code_part = re.sub(
+                r'([-+*/=<>!&|^~%]=?|>=|<=|==|!=|&&|\|\||<<|>>|\+\+|--)',
+                r'<span class="operator">\1</span>',
+                code_part
+            )
+
+            # Add back leading whitespace using non-breaking spaces
+            leading_whitespace = '&nbsp;' * leading_space
+
             highlighted_lines.append(
                 f'<div class="line" data-line="{i}">'
                 f'<span class="line-number">{i}</span>'
-                f'<span class="line-content">{code_part}{comment}</span>'
+                f'<span class="line-content">{leading_whitespace}{code_part}{comment}</span>'
                 f'</div>'
             )
-        
+
         return '\n'.join(highlighted_lines)
     
     def _display_mapping_stats(self) -> None:
