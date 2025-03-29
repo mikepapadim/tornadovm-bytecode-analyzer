@@ -1,0 +1,88 @@
+.version 7.6
+.target sm_86
+.address_size 64
+
+.visible .entry s0_t0_computedftfloat_arrays_floatarray_arrays_floatarray_arrays_floatarray_arrays_floatarray(.param .u64 .ptr .global .align 8 kernel_context, .param .u64 .ptr .global .align 8 inreal, .param .u64 .ptr .global .align 8 inimag, .param .u64 .ptr .global .align 8 outreal, .param .u64 .ptr .global .align 8 outimag) {
+    .reg .s64 rsd<5>;
+    .reg .u64 rud<11>;
+    .reg .pred rpb<3>;
+    .reg .f32 rfi<21>;
+    .reg .u32 rui<5>;
+    .reg .s32 rsi<9>;
+
+BLOCK_0:
+    ld.param.u64    rud0, [kernel_context];
+    ld.param.u64    rud1, [inreal];
+    ld.param.u64    rud2, [inimag];
+    ld.param.u64    rud3, [outreal];
+    ld.param.u64    rud4, [outimag];
+    mov.u32    rui0, %nctaid.x;
+    mov.u32    rui1, %ntid.x;
+    mul.wide.u32    rud5, rui0, rui1;
+    cvt.s32.u64    rsi0, rud5;
+    mov.u32    rui2, %tid.x;
+    mov.u32    rui3, %ctaid.x;
+    mad.lo.s32    rsi1, rui3, rui1, rui2;
+
+BLOCK_1:
+    mov.s32    rsi2, rsi1;
+LOOP_COND_1:
+    setp.lt.s32    rpb0, rsi2, 4096;
+    @!rpb0 bra    BLOCK_6;
+
+BLOCK_2:
+    cvt.rn.f32.s32    rfi0, rsi2;
+
+BLOCK_3:
+    mov.f32    rfi1, 0F00000000;
+    mov.f32    rfi2, 0F00000000;
+    mov.s32    rsi3, 0;
+LOOP_COND_3:
+    setp.lt.s32    rpb1, rsi3, 4096;
+    @!rpb1 bra    BLOCK_5;
+
+BLOCK_4:
+    add.s32    rsi4, rsi3, 6;
+    cvt.s64.s32    rsd0, rsi4;
+    shl.b64    rsd1, rsd0, 2;
+    add.u64    rud6, rud1, rsd1;
+    ld.global.f32    rfi3, [rud6];
+    add.u64    rud7, rud2, rsd1;
+    ld.global.f32    rfi4, [rud7];
+    ld.global.f32    rfi5, [rud6];
+    ld.global.f32    rfi6, [rud7];
+    cvt.rn.f32.s32    rfi7, rsi3;
+    mul.rn.f32    rfi8, rfi7, 0F40C90FDB;
+    mul.rn.f32    rfi9, rfi8, rfi0;
+    div.full.f32    rfi10, rfi9, 0F45800000;
+    sin.approx.f32    rfi11, rfi10;
+    neg.f32    rfi12, rfi5;
+    cos.approx.f32    rfi13, rfi10;
+    mul.rn.f32    rfi14, rfi13, rfi6;
+    mad.rn.f32    rfi15, rfi11, rfi12, rfi14;
+    add.rn.f32    rfi16, rfi2, rfi15;
+    mul.rn.f32    rfi17, rfi4, rfi11;
+    mad.rn.f32    rfi18, rfi13, rfi3, rfi17;
+    add.rn.f32    rfi19, rfi1, rfi18;
+    add.s32    rsi5, rsi3, 1;
+    mov.f32    rfi1, rfi19;
+    mov.f32    rfi2, rfi16;
+    mov.s32    rsi3, rsi5;
+    bra.uni    LOOP_COND_3;
+
+BLOCK_5:
+    add.s32    rsi6, rsi2, 6;
+    cvt.s64.s32    rsd2, rsi6;
+    shl.b64    rsd3, rsd2, 2;
+    add.u64    rud8, rud3, rsd3;
+    st.global.f32    [rud8], rfi1;
+    add.u64    rud9, rud4, rsd3;
+    st.global.f32    [rud9], rfi2;
+    add.s32    rsi7, rsi0, rsi2;
+    mov.s32    rsi2, rsi7;
+    bra.uni    LOOP_COND_1;
+    bra.uni    BLOCK_1;
+
+BLOCK_6:
+    ret;
+} 

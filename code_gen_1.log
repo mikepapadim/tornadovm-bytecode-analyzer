@@ -1,0 +1,178 @@
+    public static void computeDFTFloat(FloatArray inreal, FloatArray inimag, FloatArray outreal, FloatArray outimag) {
+        int n = inreal.getSize();
+        for (@Parallel int k = 0; k < n; k++) { // For each output element
+            float sumReal = 0;
+            float simImag = 0;
+            for (int t = 0; t < n; t++) { // For each input element
+                float angle = (2 * TornadoMath.floatPI() * t * k) / n;
+                sumReal += inreal.get(t) * TornadoMath.cos(angle) + inimag.get(t) * TornadoMath.sin(angle);
+                simImag += -inreal.get(t) * TornadoMath.sin(angle) + inimag.get(t) * TornadoMath.cos(angle);
+            }
+            outreal.set(k, sumReal);
+            outimag.set(k, simImag);
+        }
+    }
+
+
+    #pragma OPENCL EXTENSION cl_khr_fp64 : enable
+#pragma OPENCL EXTENSION cl_khr_fp16 : enable
+#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
+__kernel void computeDFTFloat(__global long *_kernel_context, __constant uchar *_constant_region, __local uchar *_local_region, __global int *_atomics, __global uchar *inreal, __global uchar *inimag, __global uchar *outreal, __global uchar *outimag)
+{
+  ulong ul_37, ul_38, ul_3, ul_1, ul_2, ul_0, ul_16, ul_14;
+  long l_12, l_13, l_35, l_36;
+  int i_33, i_34, i_11, i_39, i_10, i_4, i_5, i_6;
+  float f_25, f_26, f_27, f_28, f_21, f_22, f_23, f_24, f_29, f_30, f_31, f_32, f_9, f_7, f_8, f_17, f_18, f_19, f_20, f_15;
+
+  // BLOCK 0
+  ul_0  =  (ulong) inreal;
+  ul_1  =  (ulong) inimag;
+  ul_2  =  (ulong) outreal;
+  ul_3  =  (ulong) outimag;
+  i_4  =  get_global_size(0);
+  i_5  =  get_global_id(0);
+  // BLOCK 1 MERGES [0 5 ]
+  i_6  =  i_5;
+  for(;i_6 < 4096;)
+  {
+    // BLOCK 2
+    f_7  =  (float) i_6;
+    // BLOCK 3 MERGES [2 4 ]
+    f_8  =  0.0F;
+    f_9  =  0.0F;
+    i_10  =  0;
+    for(;i_10 < 4096;)
+    {
+      // BLOCK 4
+      i_11  =  i_10 + 6;
+      l_12  =  (long) i_11;
+      l_13  =  l_12 << 2;
+      ul_14  =  ul_0 + l_13;
+      f_15  =  *((__global float *) ul_14);
+      ul_16  =  ul_1 + l_13;
+      f_17  =  *((__global float *) ul_16);
+      f_18  =  *((__global float *) ul_14);
+      f_19  =  *((__global float *) ul_16);
+      f_20  =  (float) i_10;
+      f_21  =  f_20 * 6.2831855F;
+      f_22  =  f_21 * f_7;
+      f_23  =  f_22 / 4096.0F;
+      f_24  =  native_sin(f_23);
+      f_25  =  -f_18;
+      f_26  =  native_cos(f_23);
+      f_27  =  f_26 * f_19;
+      f_28  =  fma(f_24, f_25, f_27);
+      f_29  =  f_9 + f_28;
+      f_30  =  f_17 * f_24;
+      f_31  =  fma(f_26, f_15, f_30);
+      f_32  =  f_8 + f_31;
+      i_33  =  i_10 + 1;
+      f_8  =  f_32;
+      f_9  =  f_29;
+      i_10  =  i_33;
+    }  // B4
+    // BLOCK 5
+    i_34  =  i_6 + 6;
+    l_35  =  (long) i_34;
+    l_36  =  l_35 << 2;
+    ul_37  =  ul_2 + l_36;
+    *((__global float *) ul_37)  =  f_8;
+    ul_38  =  ul_3 + l_36;
+    *((__global float *) ul_38)  =  f_9;
+    i_39  =  i_4 + i_6;
+    i_6  =  i_39;
+  }  // B5
+  // BLOCK 6
+  return;
+}  //  kernel
+
+
+.version 7.6
+.target sm_86
+.address_size 64
+
+.visible .entry s0_t0_computedftfloat_arrays_floatarray_arrays_floatarray_arrays_floatarray_arrays_floatarray(.param .u64 .ptr .global .align 8 kernel_context, .param .u64 .ptr .global .align 8 inreal, .param .u64 .ptr .global .align 8 inimag, .param .u64 .ptr .global .align 8 outreal, .param .u64 .ptr .global .align 8 outimag) {
+	.reg .s64 rsd<5>;
+	.reg .u64 rud<11>;
+	.reg .pred rpb<3>;
+	.reg .f32 rfi<21>;
+	.reg .u32 rui<5>;
+	.reg .s32 rsi<9>;
+
+BLOCK_0:
+	ld.param.u64	rud0, [kernel_context];
+	ld.param.u64	rud1, [inreal];
+	ld.param.u64	rud2, [inimag];
+	ld.param.u64	rud3, [outreal];
+	ld.param.u64	rud4, [outimag];
+	mov.u32	rui0, %nctaid.x;
+	mov.u32	rui1, %ntid.x;
+	mul.wide.u32	rud5, rui0, rui1;
+	cvt.s32.u64	rsi0, rud5;
+	mov.u32	rui2, %tid.x;
+	mov.u32	rui3, %ctaid.x;
+	mad.lo.s32	rsi1, rui3, rui1, rui2;
+
+BLOCK_1:
+	mov.s32	rsi2, rsi1;
+LOOP_COND_1:
+	setp.lt.s32	rpb0, rsi2, 4096;
+	@!rpb0 bra	BLOCK_6;
+
+BLOCK_2:
+	cvt.rn.f32.s32	rfi0, rsi2;
+
+BLOCK_3:
+	mov.f32	rfi1, 0F00000000;
+	mov.f32	rfi2, 0F00000000;
+	mov.s32	rsi3, 0;
+LOOP_COND_3:
+	setp.lt.s32	rpb1, rsi3, 4096;
+	@!rpb1 bra	BLOCK_5;
+
+BLOCK_4:
+	add.s32	rsi4, rsi3, 6;
+	cvt.s64.s32	rsd0, rsi4;
+	shl.b64	rsd1, rsd0, 2;
+	add.u64	rud6, rud1, rsd1;
+	ld.global.f32	rfi3, [rud6];
+	add.u64	rud7, rud2, rsd1;
+	ld.global.f32	rfi4, [rud7];
+	ld.global.f32	rfi5, [rud6];
+	ld.global.f32	rfi6, [rud7];
+	cvt.rn.f32.s32	rfi7, rsi3;
+	mul.rn.f32	rfi8, rfi7, 0F40C90FDB;
+	mul.rn.f32	rfi9, rfi8, rfi0;
+	div.full.f32	rfi10, rfi9, 0F45800000;
+	sin.approx.f32	rfi11, rfi10;
+	neg.f32	rfi12, rfi5;
+	cos.approx.f32	rfi13, rfi10;
+	mul.rn.f32	rfi14, rfi13, rfi6;
+	mad.rn.f32	rfi15, rfi11, rfi12, rfi14;
+	add.rn.f32	rfi16, rfi2, rfi15;
+	mul.rn.f32	rfi17, rfi4, rfi11;
+	mad.rn.f32	rfi18, rfi13, rfi3, rfi17;
+	add.rn.f32	rfi19, rfi1, rfi18;
+	add.s32	rsi5, rsi3, 1;
+	mov.f32	rfi1, rfi19;
+	mov.f32	rfi2, rfi16;
+	mov.s32	rsi3, rsi5;
+	bra.uni	LOOP_COND_3;
+
+BLOCK_5:
+	add.s32	rsi6, rsi2, 6;
+	cvt.s64.s32	rsd2, rsi6;
+	shl.b64	rsd3, rsd2, 2;
+	add.u64	rud8, rud3, rsd3;
+	st.global.f32	[rud8], rfi1;
+	add.u64	rud9, rud4, rsd3;
+	st.global.f32	[rud9], rfi2;
+	add.s32	rsi7, rsi0, rsi2;
+	mov.s32	rsi2, rsi7;
+	bra.uni	LOOP_COND_1;
+	bra.uni	BLOCK_1;
+
+BLOCK_6:
+	ret;
+}
+
